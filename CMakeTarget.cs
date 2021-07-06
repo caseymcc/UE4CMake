@@ -11,6 +11,7 @@ public class CMakeTarget
     private string m_modulePath;
     private string m_targetName;
     private string m_targetLocation;
+    private string m_cmakeArgs;
     private string[] m_includeDirectories;
     private string[] m_libraries;
 
@@ -25,9 +26,9 @@ public class CMakeTarget
     private string m_buildInfoFile;
     private string m_buildInfoPath;
 
-    public static bool add(ReadOnlyTargetRules target, ModuleRules rules, string targetName, string targetLocation)
+    public static bool add(ReadOnlyTargetRules target, ModuleRules rules, string targetName, string targetLocation, string args)
     {
-        CMakeTarget cmakeTarget = new CMakeTarget(targetName, targetLocation);
+        CMakeTarget cmakeTarget = new CMakeTarget(targetName, targetLocation, args);
 
         if(!cmakeTarget.load(target, rules))
             return false;
@@ -37,16 +38,22 @@ public class CMakeTarget
 
     }
 
-    public CMakeTarget(string targetName, string targetLocation)
+    public CMakeTarget(string targetName, string targetLocation, string args)
     {
         m_targetName=targetName;
         m_targetLocation=targetLocation;
+        m_cmakeArgs=args;
     }
 
     private void addRules(ModuleRules rules)
     {
+        Console.WriteLine("Loading build info file: "+m_buildInfoPath);
+
         if(!File.Exists(m_buildInfoPath))
+        {
+            Console.WriteLine("Failed loading: "+m_buildInfoPath);
             return;
+        }
 
         Dictionary<string, string> values = new Dictionary<string, string>();
 
@@ -63,9 +70,10 @@ public class CMakeTarget
             values.Add(tokens[0], tokens[1]);
         }
 
+
         if(values.ContainsKey("includes"))
         {
-            string[] includes=values["includes"].Split(',');
+            string[] includes = values["includes"].Split(',');
 
             foreach(string include in includes)
             {
@@ -76,7 +84,7 @@ public class CMakeTarget
 
         if(values.ContainsKey("libraries"))
         {
-            string[] libraries=values["libraries"].Split(',');
+            string[] libraries = values["libraries"].Split(',');
 
             foreach(string library in libraries)
             {
@@ -127,6 +135,12 @@ public class CMakeTarget
 
     private bool build(ReadOnlyTargetRules target, string buildType)
     {
+        //check if already built
+        string builtFile = buildType+".built";
+
+        if(File.Exists(builtFile))
+            return true;
+
         var configureCommand = CreateCMakeConfiCommand(m_buildPath, buildType);
         var configureCode = ExecuteCommandSync(configureCommand);
 
@@ -143,6 +157,14 @@ public class CMakeTarget
         {
             Console.WriteLine("Cannot build project. Exited with code: "+buildCode);
             return false;
+        }
+        else
+        {
+            using(FileStream fs = File.Create(builtFile))
+            {
+                byte[] info = new UTF8Encoding(true).GetBytes("built");
+                fs.Write(info, 0, info.Length);
+            }
         }
         return true;
     }
@@ -166,7 +188,8 @@ public class CMakeTarget
                         " -B "+buildDirectory+
                         " "+generatorOptions+" "+
                         " -T host=x64"+
-                        " -DCMAKE_INSTALL_PREFIX="+installPath;
+                        " -DCMAKE_INSTALL_PREFIX="+installPath+
+                        " "+m_cmakeArgs;
 
         return program+arguments;
     }
