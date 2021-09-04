@@ -1,9 +1,24 @@
 # UE4CMake
 Provides a simple way to add a cmake lib to any Unreal Engine 4 (UE4) project. 
 
-Till I find a better way the contents of `CMakeTarget.cs` will need to be copied to your `{Project}.Build.cs` file and copy the `CMakeLists.txt` file next to your `Build.cs` file. 
+This might be a bit of a hack so may not work as the UE4 engine changes. Since there is no easy way to include a `.cs` file into the current build system (as far as I a can tell) this project sets itself up as a empty plugin.
 
-From there you can include any (right now just supports VS generator, will add support for others as needed) cmake project. Just call the static function `CMakeTarget.add()` with the `TargetRules`, `ModuleRules`, `lib's cmake target name`, `location of lib` and any `cmake args`.
+Copy the contents of this repo (or git submodule it) into your UE4 project under `Plugins/CMakeTarget`. The `.uplugin` file will setup the code as a plugin and the `.Build.cs` file sets up an empty plugin (but at least the `.cs` file is built as an Assembly).
+
+In your UE4 project file `.uproject` (or if you are building a plugin it should work with your `.uplugin` file) add `CMakeTarget` as a plugin like follows
+```
+    "FileVersion": 3,
+    ...
+    "Plugins": [
+		{
+			"Name": "CMakeTarget",
+			"Enabled": true
+		}
+	]
+```
+This will force the plugin to be built (again just need the Assembly built from the `.cs` file) and will include the plugin's Assebly into your build scripts.
+
+From there you can include any modern cmake project (older cmake may/may not have issues). Just call the static function `CMakeTarget.add()` with the `TargetRules`, `ModuleRules`, `lib's cmake target name`, `location of lib` and any `cmake args`.
 
 ```c++
 public class {YourProject}:ModuleRules
@@ -11,7 +26,7 @@ public class {YourProject}:ModuleRules
     public {YourProject}(ReadOnlyTargetRules Target) : base(Target)
     {
         ...
-        CMakeTarget.add(Target, this, "{lib's cmake target name}", {location to cmake lib source}, "{cmake args}");
+        CMakeTarget.add(Target, this, "{lib's cmake target name}", "{location to cmake lib source}", "{cmake args}");
         ...
     }
 }
@@ -24,6 +39,47 @@ There is support to get the binary locations of the lib but is not currently set
 ## Example
 [FastNoise2](https://github.com/caseymcc/UE4_FastNoise2)
 
+### FastNoise2Example.uproject:
+Original
+```c++
+{
+	"FileVersion": 3,
+	"EngineAssociation": "4.25",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "FastNoise2Example",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
+```
+to
+```c++
+{
+	"FileVersion": 3,
+	"EngineAssociation": "4.25",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "FastNoise2Example",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "CMakeTarget",
+			"Enabled": true
+		}
+	]
+}
+```
+
+### FastNoise2Example.Build.cs:
 Original
 ```c++
 using UnrealBuildTool;
@@ -39,16 +95,6 @@ public class FastNoise2Example : ModuleRules
 to
 ```c++
 using UnrealBuildTool;
-using System;
-using System.IO;
-using System.Diagnostics;
-using System.Text;
-using System.Collections.Generic;
-
-public class CMakeTarget
-{
-    ... //copied from CMakeTarget.cs
-}
 
 public class FastNoise2Example : ModuleRules
 {

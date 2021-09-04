@@ -1,0 +1,17 @@
+﻿{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "",
+	"FriendlyName": "CMakeTarget",
+	"Description": "Used to create targets from cmake projects",
+	"EngineVersion":  "ANY_VERSION",
+	"EnabledByDefault": true,
+	"CanContainContent": true,
+	"Modules": [
+		{
+			"Name": "CMakeTarget",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}

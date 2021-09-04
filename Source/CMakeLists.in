@@ -51,16 +51,31 @@ endmacro()
 
 macro(target_build_info build_info target)
     message(STATUS "target_build_info - build_info=${build_info}")
-    list(APPEND ${build_info} "includes=$<JOIN:$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:worldgen,INCLUDE_DIRECTORIES>>,$<COMMA>>")
+    list(APPEND ${build_info} "includes=$<JOIN:$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},INCLUDE_DIRECTORIES>>,$<COMMA>>")
 
+    list(APPEND target_file_dependencies @BUILD_TARGET_DIR@/CMakeList.txt)
+    list(APPEND target_file_dependencies $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},CMAKE_CONFIGURE_DEPENDS>>)
+
+    list(APPEND target_file_source_dependencies $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},SOURCES>>)
+    
+#    set(target_file_dependencies "@BUILD_TARGET_DIR@/CMakeList.txt")
+#    set(target_file_dependencies "${target_file_dependencies} $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},SOURCES>>")
+#    set(target_file_dependencies "${target_file_dependencies} $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},CMAKE_CONFIGURE_DEPENDS>>")
+
+#    list(APPEND ${build_info} "dependencies=$<JOIN:${target_cmakefile}, $<JOIN:$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},SOURCES>>,$<COMMA>>,$<COMMA>>")
     ue4_get_target_link_libraries(target_binary_libs target_link_lib_files ${target})
 
+    string(REPLACE ";" "$<SEMICOLON>" target_file_dependencies "${target_file_dependencies}")
+    string(REPLACE ";" "$<SEMICOLON>" target_file_source_dependencies "${target_file_source_dependencies}")
     string(REPLACE ";" "$<SEMICOLON>" target_binary_libs "${target_binary_libs}")
     string(REPLACE ";" "$<SEMICOLON>" target_link_lib_files "${target_link_lib_files}")
 
     message(STATUS "target_binary_libs=${target_binary_libs}")
     message(STATUS "target_link_lib_files=${target_link_lib_files}")
 
+    list(APPEND ${build_info} "dependencies=$<JOIN:${target_file_dependencies},$<COMMA>>")
+    list(APPEND ${build_info} "sourcePath=$<TARGET_PROPERTY:${target},SOURCE_DIR>")
+    list(APPEND ${build_info} "sourceDependencies=$<JOIN:${target_file_source_dependencies},$<COMMA>>")
     list(APPEND ${build_info} "binaries=$<JOIN:${target_binary_libs},$<COMMA>>")
     list(APPEND ${build_info} "libraries=$<JOIN:${target_link_lib_files},$<COMMA>>")
 endmacro()
@@ -74,4 +89,6 @@ project(@BUILD_TARGET_NAME@_build)
 
 string(REPLACE ";" "\n" @BUILD_TARGET_NAME@_build_info "${@BUILD_TARGET_NAME@_build_info}")
 message(STATUS "build_info=${@BUILD_TARGET_NAME@_build_info}")
+
+#file(WRITE @BUILD_TARGET_THIRDPARTY_DIR@/@BUILD_TARGET_NAME@/@BUILD_TARGET_BUILD_DIR@/buildinfo_$<CONFIG>.template ${@BUILD_TARGET_NAME@_build_info})
 file(GENERATE OUTPUT "@BUILD_TARGET_THIRDPARTY_DIR@/@BUILD_TARGET_NAME@/@BUILD_TARGET_BUILD_DIR@/buildinfo_$<CONFIG>.output" CONTENT "${@BUILD_TARGET_NAME@_build_info}")
