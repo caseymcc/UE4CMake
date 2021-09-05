@@ -298,6 +298,8 @@ public class CMakeTarget : ModuleRules
     public CMakeTarget(ReadOnlyTargetRules Target) : base(Target)
 	{
 //        Target.PublicIncludePaths.add(Target.ModuleDirectory);
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "UnrealEd", "Engine", "InputCore" });
+        PrivateDependencyModuleNames.AddRange(new string[] { "CoreUObject", "Engine"});
     }
     
     public static bool add(ReadOnlyTargetRules target, ModuleRules rules, string targetName, string targetLocation, string args)
