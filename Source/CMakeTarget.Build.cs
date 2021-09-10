@@ -7,6 +7,15 @@ using System.Diagnostics;
 using System.Text;
 using System.Collections.Generic;
 
+public static class DateTimeExtensions
+{
+    public static bool EqualsUpToSeconds(this DateTime dt1, DateTime dt2)
+    {
+        return dt1.Year == dt2.Year && dt1.Month == dt2.Month && dt1.Day == dt2.Day &&
+               dt1.Hour == dt2.Hour && dt1.Minute == dt2.Minute && dt1.Second == dt2.Second;
+    }   
+}
+
 public class CMakeTargetInst
 {
     private string m_cmakeTargetPath;
@@ -80,7 +89,7 @@ public class CMakeTargetInst
 
             foreach(string depend in dependencies)
             {
-                Console.WriteLine("Adding depends: "+depend);
+//                Console.WriteLine("Adding depends: "+depend);
                 rules.ExternalDependencies.Add(depend);
             }
         }
@@ -97,7 +106,7 @@ public class CMakeTargetInst
             {
                 string dependPath=Path.Combine(sourcePath, depend);
 
-                Console.WriteLine("Adding depends: "+dependPath);
+//                Console.WriteLine("Adding depends: "+dependPath);
                 rules.ExternalDependencies.Add(dependPath);
             }
         }
@@ -107,7 +116,7 @@ public class CMakeTargetInst
 
             foreach(string include in includes)
             {
-                Console.WriteLine("Adding include: "+include);
+//                Console.WriteLine("Adding include: "+include);
                 rules.PublicIncludePaths.Add(include);
             }
         }
@@ -118,12 +127,10 @@ public class CMakeTargetInst
 
             foreach(string library in libraries)
             {
-                Console.WriteLine("Adding library: "+library);
+//                Console.WriteLine("Adding library: "+library);
                 rules.PublicAdditionalLibraries.Add(library);
             }
         }
-
-        //
     }
 
     public bool load(ReadOnlyTargetRules target, ModuleRules rules)
@@ -145,14 +152,12 @@ public class CMakeTargetInst
         m_cmakeTargetPath=Directory.GetParent(m_cmakeTargetPath).FullName+"/Plugins/CMakeTarget/Source";
         Console.WriteLine("m_cmakeTargetPath: "+m_cmakeTargetPath);
 
-//        m_modulePath=Path.GetFullPath(rules.Target.ProjectFile.FullName);
-//        m_modulePath=Directory.GetParent(m_modulePath).FullName;
         m_modulePath=Path.GetFullPath(rules.ModuleDirectory);
         Console.WriteLine("m_modulePath: "+m_modulePath);
         m_thirdPartyPath=Path.Combine(m_modulePath, m_thirdPartyDir);
         m_thirdPartyGeneratedPath=Path.Combine(m_thirdPartyPath, "generated");
         m_generatedTargetPath=Path.Combine(m_thirdPartyGeneratedPath, m_targetName);
-        m_buildDirectory="build";// _" + buildType;
+        m_buildDirectory="build";
         m_buildPath=Path.Combine(m_generatedTargetPath, m_buildDirectory);
 
         m_buildInfoFile="buildinfo_"+buildType+".output";
@@ -175,23 +180,35 @@ public class CMakeTargetInst
 
     private bool build(ReadOnlyTargetRules target, string buildType)
     {
-        //check if already built
         string builtFile = Path.Combine(m_generatedTargetPath, buildType+".built");
+        string projectCMakeLists=Path.GetFullPath(Path.Combine(m_targetLocation, "CMakeLists.txt"));
 
+        bool configCMake=true;
+
+        //check if already built and CMakeList.txt not changed
         if(File.Exists(builtFile))
         {
-            Console.WriteLine("Target CMakeLists already generated, delete file to regenerate: "+builtFile);
-            return true;
+            DateTime cmakeLastWrite=File.GetLastWriteTime(projectCMakeLists);
+            string builtTimeString=System.IO.File.ReadAllText(builtFile);
+            DateTime builtTime=DateTime.Parse(builtTimeString);
+
+            if(builtTime.EqualsUpToSeconds(cmakeLastWrite))
+                configCMake=false;
         }
 
-        var configureCommand = CreateCMakeConfigCommand(target, m_buildPath, buildType);
-        var configureCode = ExecuteCommandSync(configureCommand);
-
-        if(configureCode!=0)
+        if(configCMake)
         {
-            Console.WriteLine("Cannot configure CMake project. Exited with code: "
-                +configureCode);
-            return false;
+            Console.WriteLine("Target "+m_targetName+" CMakeLists.txt out of date, rebuilding");
+
+            var configureCommand = CreateCMakeConfigCommand(target, m_buildPath, buildType);
+            var configureCode = ExecuteCommandSync(configureCommand);
+
+            if(configureCode!=0)
+            {
+                Console.WriteLine("Cannot configure CMake project. Exited with code: "
+                    +configureCode);
+                return false;
+            }
         }
 
         var buildCommand = CreateCMakeBuildCommand(m_buildPath, buildType);
@@ -203,36 +220,77 @@ public class CMakeTargetInst
         }
         else
         {
-            using(FileStream fs = File.Create(builtFile))
+            if(configCMake)
             {
-                byte[] info = new UTF8Encoding(true).GetBytes("built");
-                fs.Write(info, 0, info.Length);
+                DateTime cmakeLastWrite=File.GetLastWriteTime(projectCMakeLists);
+
+                File.WriteAllText(builtFile, cmakeLastWrite.ToString());
             }
         }
         return true;
     }
 
+    private string GetGeneratorName(WindowsCompiler compiler)
+    {
+        string generatorName="";
+
+        switch(compiler)
+        {
+        case WindowsCompiler.Default:
+        break;
+        case WindowsCompiler.Clang:
+            generatorName="NMake Makefiles";
+        break;
+        case WindowsCompiler.Intel:
+            generatorName="NMake Makefiles";
+        break;
+        case WindowsCompiler.VisualStudio2017:
+            generatorName="Visual Studio 15 2017";
+        break;
+        case WindowsCompiler.VisualStudio2019:
+            generatorName="Visual Studio 16 2019";
+        break;
+        }
+
+        return generatorName;
+    }
+
+    private string GetGeneratorOptions(WindowsCompiler compiler, WindowsArchitecture architecture)
+    {
+        string generatorOptions="";
+
+        if((compiler == WindowsCompiler.VisualStudio2017) || (compiler == WindowsCompiler.VisualStudio2019))
+        {
+            if(architecture == WindowsArchitecture.x86)
+                generatorOptions="-A Win32";
+            else if(architecture == WindowsArchitecture.x64)
+                generatorOptions="-A x64";
+            else if(architecture == WindowsArchitecture.ARM32)
+                generatorOptions="-A ARM";
+            else if(architecture == WindowsArchitecture.ARM64)
+                generatorOptions="-A ARM64";
+        }
+        return generatorOptions;
+    }
 
     private string CreateCMakeConfigCommand(ReadOnlyTargetRules target, string buildDirectory, string buildType)
     {
         const string program = "cmake.exe";
-        const string generator = "Visual Studio 16 2019";
-        const string generatorOptions = "-A x64";
+        string generator = GetGeneratorName(target.WindowsPlatform.Compiler);//"Visual Studio 16 2019";
+        string generatorOptions = GetGeneratorOptions(target.WindowsPlatform.Compiler, target.WindowsPlatform.Architecture);//"-A x64";
 
         string cmakeFile = Path.Combine(m_generatedTargetPath, "CMakeLists.txt");
         string toolchainPath = Path.Combine(m_generatedTargetPath, "toolchain.cmake");
 
-//        if(!File.Exists(cmakeFile))
-            generateCMakeFile(target, cmakeFile, buildType);
-        
+        generateCMakeFile(target, cmakeFile, buildType);
         generateToolchain(target, toolchainPath);
 
         var installPath = Path.Combine(m_thirdPartyPath, "generated");
 
         var arguments = " -G \""+generator+"\""+
+                        " "+generatorOptions+" "+
                         " -S "+m_generatedTargetPath+
                         " -B "+buildDirectory+
-                        " "+generatorOptions+" "+
                         " -T host=x64"+
                         " -DCMAKE_INSTALL_PREFIX="+installPath+
                         " -DCMAKE_TOOLCHAIN_FILE="+toolchainPath+
@@ -254,14 +312,7 @@ public class CMakeTargetInst
     private void generateWindowsToolchain(ReadOnlyTargetRules target, string path)
     {
         string templateFilePath = Path.Combine(m_cmakeTargetPath, "toolchains/windows_toolchain.in");
-
         string contents = File.ReadAllText(templateFilePath);
-
-//        VCEnvironment envVars=target.WindowsPlatform.Environment;
-//
-//        contents=contents.Replace("@COMPILER@", envVars.CompilerPath);
-//        contents=contents.Replace("@LINKER@", envVars.LinkerPath);
-
         bool forceReleaseRuntime=true;
 
         if((target.Configuration == UnrealTargetConfiguration.Debug) && (target.bDebugBuildsActuallyUseDebugCRT))
