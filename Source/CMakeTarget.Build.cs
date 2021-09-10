@@ -128,16 +128,17 @@ public class CMakeTargetInst
 
     public bool load(ReadOnlyTargetRules target, ModuleRules rules)
     {
-        if(target.Platform!=UnrealTargetPlatform.Win64)
-        {
-            return false;
-        }
+        string buildType = "Release";
 
-        string buildType = "Debug";
-
-        if(target.Configuration==UnrealTargetConfiguration.Shipping)
+        switch(target.Configuration)
         {
-            buildType="Release";
+            case UnrealTargetConfiguration.Debug:
+            case UnrealTargetConfiguration.Development:
+            case UnrealTargetConfiguration.DebugGame:
+                buildType="Debug";
+                break;
+            default:
+                break;
         }
 
         m_cmakeTargetPath=Path.GetFullPath(rules.Target.ProjectFile.FullName);
@@ -183,7 +184,7 @@ public class CMakeTargetInst
             return true;
         }
 
-        var configureCommand = CreateCMakeConfiCommand(m_buildPath, buildType);
+        var configureCommand = CreateCMakeConfigCommand(target, m_buildPath, buildType);
         var configureCode = ExecuteCommandSync(configureCommand);
 
         if(configureCode!=0)
@@ -212,16 +213,19 @@ public class CMakeTargetInst
     }
 
 
-    private string CreateCMakeConfiCommand(string buildDirectory, string buildType)
+    private string CreateCMakeConfigCommand(ReadOnlyTargetRules target, string buildDirectory, string buildType)
     {
         const string program = "cmake.exe";
         const string generator = "Visual Studio 16 2019";
         const string generatorOptions = "-A x64";
 
         string cmakeFile = Path.Combine(m_generatedTargetPath, "CMakeLists.txt");
+        string toolchainPath = Path.Combine(m_generatedTargetPath, "toolchain.cmake");
 
 //        if(!File.Exists(cmakeFile))
-            generateCMakeFile(cmakeFile, buildType);
+            generateCMakeFile(target, cmakeFile, buildType);
+        
+        generateToolchain(target, toolchainPath);
 
         var installPath = Path.Combine(m_thirdPartyPath, "generated");
 
@@ -231,12 +235,43 @@ public class CMakeTargetInst
                         " "+generatorOptions+" "+
                         " -T host=x64"+
                         " -DCMAKE_INSTALL_PREFIX="+installPath+
+                        " -DCMAKE_TOOLCHAIN_FILE="+toolchainPath+
                         " "+m_cmakeArgs;
 
         return program+arguments;
     }
 
-    private bool generateCMakeFile(string path, string buildType)
+    private bool generateToolchain(ReadOnlyTargetRules target, string path)
+    {
+        if(target.Platform == UnrealTargetPlatform.Win64)
+        {
+            generateWindowsToolchain(target, path);
+            return true;
+        }
+        return false;
+    }
+
+    private void generateWindowsToolchain(ReadOnlyTargetRules target, string path)
+    {
+        string templateFilePath = Path.Combine(m_cmakeTargetPath, "toolchains/windows_toolchain.in");
+
+        string contents = File.ReadAllText(templateFilePath);
+
+//        VCEnvironment envVars=target.WindowsPlatform.Environment;
+//
+//        contents=contents.Replace("@COMPILER@", envVars.CompilerPath);
+//        contents=contents.Replace("@LINKER@", envVars.LinkerPath);
+
+        bool forceReleaseRuntime=true;
+
+        if((target.Configuration == UnrealTargetConfiguration.Debug) && (target.bDebugBuildsActuallyUseDebugCRT))
+            forceReleaseRuntime=false;
+        contents=contents.Replace("@FORCE_RELEASE_RUNTIME@", forceReleaseRuntime?"ON":"OFF");
+
+        File.WriteAllText(path, contents);
+    }
+
+    private bool generateCMakeFile(ReadOnlyTargetRules target, string path, string buildType)
     {
         string templateFilePath = Path.Combine(m_cmakeTargetPath, "CMakeLists.in");
         string cmakeFile = Path.Combine(m_generatedTargetPath, "CMakeLists.txt");
@@ -244,6 +279,20 @@ public class CMakeTargetInst
 
         string contents = File.ReadAllText(templateFilePath);
 
+        bool forceReleaseRuntime=false;
+
+        if(target.Platform == UnrealTargetPlatform.Win64)
+        {
+            if(buildType == "Debug")
+            {
+                forceReleaseRuntime=true;
+                
+                if((target.Configuration == UnrealTargetConfiguration.Debug) && (target.bDebugBuildsActuallyUseDebugCRT))
+                    forceReleaseRuntime=false;
+            }
+        }
+
+        contents=contents.Replace("@FORCE_RELEASE_RUNTIME@", forceReleaseRuntime?"ON":"OFF");
         contents=contents.Replace("@BUILD_TARGET_NAME@", m_targetName);
         contents=contents.Replace("@BUILD_TARGET_DIR@", m_targetLocation.Replace("\\", "/"));
         contents=contents.Replace("@BUILD_TARGET_THIRDPARTY_DIR@", m_thirdPartyGeneratedPath.Replace("\\", "/"));
@@ -298,7 +347,7 @@ public class CMakeTarget : ModuleRules
     public CMakeTarget(ReadOnlyTargetRules Target) : base(Target)
 	{
 //        Target.PublicIncludePaths.add(Target.ModuleDirectory);
-        PublicDependencyModuleNames.AddRange(new string[] { "Core", "UnrealEd", "Engine", "InputCore" });
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "Engine", "InputCore" });
         PrivateDependencyModuleNames.AddRange(new string[] { "CoreUObject", "Engine"});
     }
     

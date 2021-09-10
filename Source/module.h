@@ -2,7 +2,7 @@
 #define _CMakeTarget_module_h_
  
  #include "Engine.h"
- #include "UnrealEd.h"
+ //#include "UnrealEd.h"
  #include "Modules/ModuleInterface.h"
  #include "Modules/ModuleManager.h"
  
