@@ -1,3 +1,5 @@
+[![discord](https://img.shields.io/discord/495955797872869376.svg?logo=discord "Discord")](https://discord.gg/4AYSjfEByn)
+
 # UE4CMake
 Provides a simple way to add a cmake lib to any Unreal Engine 4 (UE4) project. 
 
