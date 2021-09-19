@@ -87,7 +87,7 @@ macro(target_build_info build_info target)
 #    message(STATUS "target_build_info - build_info=${build_info}")
     list(APPEND ${build_info} "includes=$<JOIN:$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},INCLUDE_DIRECTORIES>>,$<COMMA>>")
 
-    list(APPEND target_file_dependencies @BUILD_TARGET_DIR@/CMakeLists.txt)
+    list(APPEND target_file_dependencies "@BUILD_TARGET_DIR@/CMakeLists.txt")
     list(APPEND target_file_dependencies $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},CMAKE_CONFIGURE_DEPENDS>>)
 
     list(APPEND target_file_source_dependencies $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},SOURCES>>)
@@ -125,7 +125,7 @@ set(@BUILD_TARGET_NAME@_build_info "")
 #    message(STATUS "CMAKE_CXX_FLAGS_DEBUG: ${CMAKE_CXX_FLAGS_DEBUG}")
 #endif()
 
-add_subdirectory(@BUILD_TARGET_DIR@ "@BUILD_TARGET_THIRDPARTY_DIR@/@BUILD_TARGET_NAME@/@BUILD_TARGET_BUILD_DIR@/@BUILD_TARGET_NAME@")
+add_subdirectory("@BUILD_TARGET_DIR@" "@BUILD_TARGET_THIRDPARTY_DIR@/@BUILD_TARGET_NAME@/@BUILD_TARGET_BUILD_DIR@/@BUILD_TARGET_NAME@")
 target_build_info("@BUILD_TARGET_NAME@_build_info" @BUILD_TARGET_NAME@)
 
 project(@BUILD_TARGET_NAME@_build)
@@ -133,5 +133,5 @@ project(@BUILD_TARGET_NAME@_build)
 string(REPLACE ";" "\n" @BUILD_TARGET_NAME@_build_info "${@BUILD_TARGET_NAME@_build_info}")
 #message(STATUS "build_info=${@BUILD_TARGET_NAME@_build_info}")
 
-#file(WRITE @BUILD_TARGET_THIRDPARTY_DIR@/@BUILD_TARGET_NAME@/@BUILD_TARGET_BUILD_DIR@/buildinfo_$<CONFIG>.template ${@BUILD_TARGET_NAME@_build_info})
+#file(WRITE "@BUILD_TARGET_THIRDPARTY_DIR@/@BUILD_TARGET_NAME@/@BUILD_TARGET_BUILD_DIR@/buildinfo_$<CONFIG>.template" ${@BUILD_TARGET_NAME@_build_info})
 file(GENERATE OUTPUT "@BUILD_TARGET_THIRDPARTY_DIR@/@BUILD_TARGET_NAME@/@BUILD_TARGET_BUILD_DIR@/buildinfo_$<CONFIG>.output" CONTENT "${@BUILD_TARGET_NAME@_build_info}")

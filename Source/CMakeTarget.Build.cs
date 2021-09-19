@@ -289,11 +289,11 @@ public class CMakeTargetInst
 
         var arguments = " -G \""+generator+"\""+
                         " "+generatorOptions+" "+
-                        " -S "+m_generatedTargetPath+
-                        " -B "+buildDirectory+
+                        " -S \""+m_generatedTargetPath+"\""+
+                        " -B \""+buildDirectory+"\""+
                         " -T host=x64"+
-                        " -DCMAKE_INSTALL_PREFIX="+installPath+
-                        " -DCMAKE_TOOLCHAIN_FILE="+toolchainPath+
+                        " -DCMAKE_INSTALL_PREFIX=\""+installPath+"\""+
+                        " -DCMAKE_TOOLCHAIN_FILE=\""+toolchainPath+"\""+
                         " "+m_cmakeArgs;
 
         return program+arguments;
