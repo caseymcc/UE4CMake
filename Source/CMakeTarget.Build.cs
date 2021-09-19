@@ -356,12 +356,12 @@ public class CMakeTargetInst
 
     private string CreateCMakeBuildCommand(string buildDirectory, string buildType)
     {
-        return "cmake.exe --build "+buildDirectory+" --config "+buildType;
+        return "cmake.exe --build \""+buildDirectory+"\" --config "+buildType;
     }
 
     private string CreateCMakeInstallCommand(string buildDirectory, string buildType)
     {
-        return "cmake.exe --build "+buildDirectory+" --target install --config "+buildType;
+        return "cmake.exe --build \""+buildDirectory+"\" --target install --config "+buildType;
     }
 
     private int ExecuteCommandSync(string command)
