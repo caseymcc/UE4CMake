@@ -103,7 +103,7 @@ public class FastNoise2Example : ModuleRules
 	public FastNoise2Example(ReadOnlyTargetRules Target) : base(Target)
 	{
         ...
-        CMakeTarget.add(Target, this, "FastNoise2", Path.Combine(this.ModuleDirectory, "../Deps/FastNoise2"), "-DFASTNOISE2_NOISETOOL=OFF");
+        CMakeTarget.add(Target, this, "FastNoise", Path.Combine(this.ModuleDirectory, "../Deps/FastNoise2"), "-DFASTNOISE2_NOISETOOL=OFF");
         ...
     }
 }
