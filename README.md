@@ -18,7 +18,7 @@ In your UE4 project file `.uproject` (or if you are building a plugin it should 
 		}
 	]
 ```
-This will force the plugin to be built (again just need the Assembly built from the `.cs` file) and will include the plugin's Assebly into your build scripts.
+This will force the plugin to be built (again just need the Assembly built from the `.cs` file) and will include the plugin's Assembly into your build scripts.
 
 From there you can include any modern cmake project (older cmake may/may not have issues). Just call the static function `CMakeTarget.add()` with the `TargetRules`, `ModuleRules`, `lib's cmake target name`, `location of lib` and any `cmake args`.
 
@@ -34,9 +34,9 @@ public class {YourProject}:ModuleRules
 }
 ```
 
-The CMakeTarget will then create a directory in your Modules source directory under `Source/Thirdparty/generated/{LibName}`. It will generate a CMakeLists.txt file that will link to cmake libraries directory and will call cmake to generate the build files under `build` in the same `generated/{LibName}` directory. Once the cmake generation is complete it will then use cmake to build the lib and will fetch the libs includes and addtional libraries from its target name and then automatically add that to the `ModuleRules` with `PublicIncludePaths` and `PublicAdditionalLibraries`.
+The CMakeTarget will then create a directory in your Modules source directory under `Source/Thirdparty/generated/{LibName}`. It will generate a CMakeLists.txt file that will link to cmake libraries directory and will call cmake to generate the build files under `build` in the same `generated/{LibName}` directory. Once the cmake generation is complete it will then use cmake to build the lib and will fetch the libs includes and addtional libraries from its target name and then automatically add that to the `ModuleRules` with `PublicIncludePaths` and `PublicAdditionalLibraries`. It will also add the cmake target's source/CMakeLists files to `ModuleRules.ExternalDependencies` so that changes to the cmake target will outdate the UE4 project which will force a build of the cmake target.
 
-There is support to get the binary locations of the lib but is not currently setup. Also right now it will only work with MSVC but could be fixed to work with any cmake supported generator.
+There is support to get the binary locations of the lib but is not currently setup.
 
 ## Example
 [FastNoise2](https://github.com/caseymcc/UE4_FastNoise2)
