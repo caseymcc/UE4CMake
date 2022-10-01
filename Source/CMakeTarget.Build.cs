@@ -22,6 +22,7 @@ public class CMakeTargetInst
     private string m_modulePath;
     private string m_targetName;
     private string m_targetLocation;
+    private string m_targetPath;
     private string m_cmakeArgs;
 //    private string[] m_includeDirectories;
 //    private string[] m_libraries;
@@ -30,26 +31,11 @@ public class CMakeTargetInst
     private string m_buildPath;
     private string m_generatedTargetPath;
 
-    private string m_thirdPartyDir = "../ThirdParty";
-    private string m_thirdPartyPath;
     private string m_thirdPartyGeneratedPath;
 
     private string m_buildInfoFile;
     private string m_buildInfoPath;
 
-//    public static bool add(ReadOnlyTargetRules target, ModuleRules rules, string targetName, string targetLocation, string args)
-//    {
-//        CMakeTarget cmakeTarget = new CMakeTarget(targetName, targetLocation, args);
-//
-//        if(!cmakeTarget.load(target, rules))
-//            return false;
-//
-//        cmakeTarget.addRules(rules);
-//        return true;
-//
-//    }
-
-    
     public CMakeTargetInst(string targetName, string targetLocation, string args)
     {
         m_targetName=targetName;
@@ -57,14 +43,14 @@ public class CMakeTargetInst
         m_cmakeArgs=args;
     }
 
-    public void addRules(ModuleRules rules)
+    public bool addRules(ModuleRules rules)
     {
         Console.WriteLine("Loading build info file: "+m_buildInfoPath);
 
         if(!File.Exists(m_buildInfoPath))
         {
             Console.WriteLine("Failed loading: "+m_buildInfoPath);
-            return;
+            return false;
         }
 
         Dictionary<string, string> values = new Dictionary<string, string>();
@@ -89,7 +75,6 @@ public class CMakeTargetInst
 
             foreach(string depend in dependencies)
             {
-//                Console.WriteLine("Adding depends: "+depend);
                 rules.ExternalDependencies.Add(depend);
             }
         }
@@ -106,7 +91,6 @@ public class CMakeTargetInst
             {
                 string dependPath=Path.Combine(sourcePath, depend);
 
-//                Console.WriteLine("Adding depends: "+dependPath);
                 rules.ExternalDependencies.Add(dependPath);
             }
         }
@@ -116,7 +100,6 @@ public class CMakeTargetInst
 
             foreach(string include in includes)
             {
-//                Console.WriteLine("Adding include: "+include);
                 rules.PublicIncludePaths.Add(include);
             }
         }
@@ -127,10 +110,19 @@ public class CMakeTargetInst
 
             foreach(string library in libraries)
             {
-//                Console.WriteLine("Adding library: "+library);
                 rules.PublicAdditionalLibraries.Add(library);
             }
         }
+
+        return true;
+    }
+
+    public void addFailed(ModuleRules rules)
+    {
+        string dummyFile=Path.Combine(m_targetPath, "build.failed");
+
+        //adding non existent file to debpendencies to force cmake to re-run
+        rules.ExternalDependencies.Add(dummyFile);
     }
 
     public bool load(ReadOnlyTargetRules target, ModuleRules rules)
@@ -154,8 +146,9 @@ public class CMakeTargetInst
 
         m_modulePath=Path.GetFullPath(rules.ModuleDirectory);
         Console.WriteLine("m_modulePath: "+m_modulePath);
-        m_thirdPartyPath=Path.Combine(m_modulePath, m_thirdPartyDir);
-        m_thirdPartyGeneratedPath=Path.Combine(m_thirdPartyPath, "generated");
+        m_targetPath=Path.Combine(m_modulePath, m_targetLocation);
+
+        m_thirdPartyGeneratedPath=Path.Combine(rules.Target.ProjectFile.Directory.FullName, "Intermediate", "CMakeTarget");
         m_generatedTargetPath=Path.Combine(m_thirdPartyGeneratedPath, m_targetName);
         m_buildDirectory="build";
         m_buildPath=Path.Combine(m_generatedTargetPath, m_buildDirectory);
@@ -181,7 +174,7 @@ public class CMakeTargetInst
     private bool build(ReadOnlyTargetRules target, string buildType)
     {
         string builtFile = Path.Combine(m_generatedTargetPath, buildType+".built");
-        string projectCMakeLists=Path.GetFullPath(Path.Combine(m_targetLocation, "CMakeLists.txt"));
+        string projectCMakeLists=Path.GetFullPath(Path.Combine(m_targetPath, "CMakeLists.txt"));
 
         bool configCMake=true;
 
@@ -250,6 +243,9 @@ public class CMakeTargetInst
         case WindowsCompiler.VisualStudio2019:
             generatorName="Visual Studio 16 2019";
         break;
+        case WindowsCompiler.VisualStudio2022:
+            generatorName="Visual Studio 17 2022";
+        break;
         }
 
         return generatorName;
@@ -276,8 +272,9 @@ public class CMakeTargetInst
     private string CreateCMakeConfigCommand(ReadOnlyTargetRules target, string buildDirectory, string buildType)
     {
         const string program = "cmake.exe";
-        string generator = GetGeneratorName(target.WindowsPlatform.Compiler);//"Visual Studio 16 2019";
-        string generatorOptions = GetGeneratorOptions(target.WindowsPlatform.Compiler, target.WindowsPlatform.Architecture);//"-A x64";
+
+        string generator = GetGeneratorName(target.WindowsPlatform.Compiler);
+        string generatorOptions = GetGeneratorOptions(target.WindowsPlatform.Compiler, target.WindowsPlatform.Architecture);;
 
         string cmakeFile = Path.Combine(m_generatedTargetPath, "CMakeLists.txt");
         string toolchainPath = Path.Combine(m_generatedTargetPath, "toolchain.cmake");
@@ -285,7 +282,7 @@ public class CMakeTargetInst
         generateCMakeFile(target, cmakeFile, buildType);
         generateToolchain(target, toolchainPath);
 
-        var installPath = Path.Combine(m_thirdPartyPath, "generated");
+        var installPath = m_thirdPartyGeneratedPath;
 
         var arguments = " -G \""+generator+"\""+
                         " "+generatorOptions+" "+
@@ -295,6 +292,8 @@ public class CMakeTargetInst
                         " -DCMAKE_INSTALL_PREFIX=\""+installPath+"\""+
                         " -DCMAKE_TOOLCHAIN_FILE=\""+toolchainPath+"\""+
                         " "+m_cmakeArgs;
+
+        Console.WriteLine("CMakeTarget calling cmake with: "+arguments);
 
         return program+arguments;
     }
@@ -345,7 +344,7 @@ public class CMakeTargetInst
 
         contents=contents.Replace("@FORCE_RELEASE_RUNTIME@", forceReleaseRuntime?"ON":"OFF");
         contents=contents.Replace("@BUILD_TARGET_NAME@", m_targetName);
-        contents=contents.Replace("@BUILD_TARGET_DIR@", m_targetLocation.Replace("\\", "/"));
+        contents=contents.Replace("@BUILD_TARGET_DIR@", m_targetPath.Replace("\\", "/"));
         contents=contents.Replace("@BUILD_TARGET_THIRDPARTY_DIR@", m_thirdPartyGeneratedPath.Replace("\\", "/"));
         contents=contents.Replace("@BUILD_TARGET_BUILD_DIR@", buildDir.Replace("\\", "/"));
 
@@ -397,7 +396,6 @@ public class CMakeTarget : ModuleRules
 {
     public CMakeTarget(ReadOnlyTargetRules Target) : base(Target)
 	{
-//        Target.PublicIncludePaths.add(Target.ModuleDirectory);
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "Engine", "InputCore" });
         PrivateDependencyModuleNames.AddRange(new string[] { "CoreUObject", "Engine"});
     }
@@ -410,10 +408,16 @@ public class CMakeTarget : ModuleRules
         if(!cmakeTarget.load(target, rules))
         {
             Console.WriteLine("CMakeTarget failed to load target: "+targetName);
+            cmakeTarget.addFailed(rules);    
             return false;
         }
 
-        cmakeTarget.addRules(rules);
+        if(!cmakeTarget.addRules(rules))
+        {
+            cmakeTarget.addFailed(rules);    
+            return false;
+        }
+
         return true;
     }
 }
