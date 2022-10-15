@@ -196,6 +196,7 @@ public class CMakeTargetInst
             var configureCommand = CreateCMakeConfigCommand(target, m_buildPath, buildType);
             var configureCode = ExecuteCommandSync(configureCommand);
 
+            Console.WriteLine("configureCode: "+configureCode);
             if(configureCode!=0)
             {
                 Console.WriteLine("Cannot configure CMake project. Exited with code: "
@@ -206,6 +207,8 @@ public class CMakeTargetInst
 
         var buildCommand = CreateCMakeBuildCommand(m_buildPath, buildType);
         var buildCode = ExecuteCommandSync(buildCommand);
+
+        Console.WriteLine("buildCode: "+buildCode);
         if(buildCode!=0)
         {
             Console.WriteLine("Cannot build project. Exited with code: "+buildCode);
@@ -223,7 +226,7 @@ public class CMakeTargetInst
         return true;
     }
 
-    private string GetGeneratorName(WindowsCompiler compiler)
+    private string GetWindowsGeneratorName(WindowsCompiler compiler)
     {
         string generatorName="";
 
@@ -237,9 +240,11 @@ public class CMakeTargetInst
         case WindowsCompiler.Intel:
             generatorName="NMake Makefiles";
         break;
+#if !UE_5_0_OR_LATER
         case WindowsCompiler.VisualStudio2017:
             generatorName="Visual Studio 15 2017";
         break;
+#endif//!UE_5_0_OR_LATER
         case WindowsCompiler.VisualStudio2019:
             generatorName="Visual Studio 16 2019";
         break;
@@ -251,61 +256,114 @@ public class CMakeTargetInst
         return generatorName;
     }
 
-    private string GetGeneratorOptions(WindowsCompiler compiler, WindowsArchitecture architecture)
+    private string GetWindowsGeneratorOptions(WindowsCompiler compiler, WindowsArchitecture architecture)
     {
         string generatorOptions="";
 
-        if((compiler == WindowsCompiler.VisualStudio2017) || (compiler == WindowsCompiler.VisualStudio2019))
+        if((compiler == WindowsCompiler.VisualStudio2022) || (compiler == WindowsCompiler.VisualStudio2019)
+#if !UE_5_0_OR_LATER
+            || (compiler == WindowsCompiler.VisualStudio2017)
+#endif//!UE_5_0_OR_LATER 
+        )
         {
-            if(architecture == WindowsArchitecture.x86)
-                generatorOptions="-A Win32";
-            else if(architecture == WindowsArchitecture.x64)
+            if(architecture == WindowsArchitecture.x64)
                 generatorOptions="-A x64";
-            else if(architecture == WindowsArchitecture.ARM32)
-                generatorOptions="-A ARM";
             else if(architecture == WindowsArchitecture.ARM64)
                 generatorOptions="-A ARM64";
+#if !UE_5_0_OR_LATER
+            else if(architecture == WindowsArchitecture.x86)
+                generatorOptions="-A Win32";
+            else if(architecture == WindowsArchitecture.ARM32)
+                generatorOptions="-A ARM";
+#endif//!UE_5_0_OR_LATER
         }
         return generatorOptions;
     }
 
+    (string name, string options) GetGeneratorInfo(ReadOnlyTargetRules target)
+    {
+        string name;
+        string options;
+
+        if((target.Platform == UnrealTargetPlatform.Win64) 
+#if !UE_5_0_OR_LATER
+            || (target.Platform == UnrealTargetPlatform.Win32)
+#endif//!UE_5_0_OR_LATER
+            )
+        {
+            name=GetWindowsGeneratorName(target.WindowsPlatform.Compiler);
+            options=GetWindowsGeneratorOptions(target.WindowsPlatform.Compiler, target.WindowsPlatform.Architecture);
+        }
+        else if(target.Platform == UnrealTargetPlatform.Linux)
+        {
+            name="Unix Makefiles";
+            options="";
+        }
+        else
+        {
+            name="";
+            options="";
+        }
+
+        return (name, options);
+    }
+
+    private string GetCMakeExe()
+    {
+        string program = "cmake";
+
+        if((BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win64) 
+#if !UE_5_0_OR_LATER
+            || (BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win32)
+#endif//!UE_5_0_OR_LATER
+            )
+        {
+            program+=".exe";
+        }
+        return program;
+    }
+
     private string CreateCMakeConfigCommand(ReadOnlyTargetRules target, string buildDirectory, string buildType)
     {
-        const string program = "cmake.exe";
+        string program = GetCMakeExe();
+        string options = "";
 
-        string generator = GetGeneratorName(target.WindowsPlatform.Compiler);
-        string generatorOptions = GetGeneratorOptions(target.WindowsPlatform.Compiler, target.WindowsPlatform.Architecture);;
+        if((BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win64) 
+#if !UE_5_0_OR_LATER
+            || (BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win32)
+#endif//!UE_5_0_OR_LATER
+            )
+        {
+            options=" -T host=x64";
+        }
+
+        var generatorInfo=GetGeneratorInfo(target);
 
         string cmakeFile = Path.Combine(m_generatedTargetPath, "CMakeLists.txt");
         string toolchainPath = Path.Combine(m_generatedTargetPath, "toolchain.cmake");
 
         generateCMakeFile(target, cmakeFile, buildType);
-        generateToolchain(target, toolchainPath);
+        
+        string toolChain="";
+        if(generateToolchain(target, toolchainPath))
+        {
+            toolChain=" -DCMAKE_TOOLCHAIN_FILE=\""+toolchainPath+"\"";
+        }
 
         var installPath = m_thirdPartyGeneratedPath;
 
-        var arguments = " -G \""+generator+"\""+
-                        " "+generatorOptions+" "+
+        var arguments = " -G \""+generatorInfo.name+"\""+
+                        " "+generatorInfo.options+" "+
                         " -S \""+m_generatedTargetPath+"\""+
                         " -B \""+buildDirectory+"\""+
-                        " -T host=x64"+
                         " -DCMAKE_INSTALL_PREFIX=\""+installPath+"\""+
-                        " -DCMAKE_TOOLCHAIN_FILE=\""+toolchainPath+"\""+
+                        toolChain+
+                        options+
                         " "+m_cmakeArgs;
 
         Console.WriteLine("CMakeTarget calling cmake with: "+arguments);
 
         return program+arguments;
-    }
-
-    private bool generateToolchain(ReadOnlyTargetRules target, string path)
-    {
-        if(target.Platform == UnrealTargetPlatform.Win64)
-        {
-            generateWindowsToolchain(target, path);
-            return true;
-        }
-        return false;
     }
 
     private void generateWindowsToolchain(ReadOnlyTargetRules target, string path)
@@ -319,6 +377,16 @@ public class CMakeTargetInst
         contents=contents.Replace("@FORCE_RELEASE_RUNTIME@", forceReleaseRuntime?"ON":"OFF");
 
         File.WriteAllText(path, contents);
+    }
+
+    private bool generateToolchain(ReadOnlyTargetRules target, string path)
+    {
+        if(target.Platform == UnrealTargetPlatform.Win64)
+        {
+            generateWindowsToolchain(target, path);
+            return true;
+        }
+        return false;
     }
 
     private bool generateCMakeFile(ReadOnlyTargetRules target, string path, string buildType)
@@ -355,18 +423,41 @@ public class CMakeTargetInst
 
     private string CreateCMakeBuildCommand(string buildDirectory, string buildType)
     {
-        return "cmake.exe --build \""+buildDirectory+"\" --config "+buildType;
+        return GetCMakeExe()+" --build \""+buildDirectory+"\" --config "+buildType;
     }
 
     private string CreateCMakeInstallCommand(string buildDirectory, string buildType)
     {
-        return "cmake.exe --build \""+buildDirectory+"\" --target install --config "+buildType;
+        return GetCMakeExe()+" --build \""+buildDirectory+"\" --target install --config "+buildType;
     }
 
+    private (string cmd, string options) GetExecuteCommandSync()
+    {
+        string cmd = "";
+        string options = "";
+
+        if((BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win64) 
+#if !UE_5_0_OR_LATER
+            || (BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win32)
+#endif//!UE_5_0_OR_LATER
+            )
+        {
+            cmd="cmd.exe";
+            options="/c ";
+        }
+        else if(BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Linux) 
+        {
+            cmd="bash";
+            options="-c ";
+        }
+        return (cmd, options);
+    }
     private int ExecuteCommandSync(string command)
     {
+        var cmdInfo=GetExecuteCommandSync();
+
         Console.WriteLine("Running: "+command);
-        var processInfo = new ProcessStartInfo("cmd.exe", "/c "+command)
+        var processInfo = new ProcessStartInfo(cmdInfo.cmd, cmdInfo.options+command)
         {
             CreateNoWindow=true,
             UseShellExecute=false,
