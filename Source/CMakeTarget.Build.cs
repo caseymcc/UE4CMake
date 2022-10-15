@@ -455,9 +455,11 @@ public class CMakeTargetInst
     private int ExecuteCommandSync(string command)
     {
         var cmdInfo=GetExecuteCommandSync();
+        string escapedCmd=" \""+command.Replace("\"", "\\\"")+" \"";
 
         Console.WriteLine("Running: "+command);
-        var processInfo = new ProcessStartInfo(cmdInfo.cmd, cmdInfo.options+command)
+        Console.WriteLine("Actual: "+cmdInfo.cmd+" "+cmdInfo.options+escapedCmd);
+        var processInfo = new ProcessStartInfo(cmdInfo.cmd, cmdInfo.options+escapedCmd)
         {
             CreateNoWindow=true,
             UseShellExecute=false,
@@ -475,6 +477,7 @@ public class CMakeTargetInst
         p.BeginErrorReadLine();
         p.WaitForExit();
 
+        Console.WriteLine("Exit code: "+p.ExitCode);
         if(p.ExitCode != 0)
         {
              Console.WriteLine(outputString);
