@@ -104,6 +104,16 @@ public class CMakeTargetInst
             }
         }
 
+        if(values.ContainsKey("binaryDirectories"))
+        {
+            string[] binaryDirectories = values["binaryDirectories"].Split(',');
+
+            foreach(string binaryDirectory in binaryDirectories)
+            {
+                rules.PublicRuntimeLibraryPaths.Add(binaryDirectory);
+            }
+        }
+
         if(values.ContainsKey("libraries"))
         {
             string[] libraries = values["libraries"].Split(',');
@@ -117,7 +127,7 @@ public class CMakeTargetInst
         return true;
     }
 
-    public void addFailed(ModuleRules rules)
+    public void AddFailed(ModuleRules rules)
     {
         string dummyFile=Path.Combine(m_targetPath, "build.failed");
 
@@ -125,7 +135,7 @@ public class CMakeTargetInst
         rules.ExternalDependencies.Add(dummyFile);
     }
 
-    public bool load(ReadOnlyTargetRules target, ModuleRules rules)
+    private string GetBuildType(ReadOnlyTargetRules target)
     {
         string buildType = "Release";
 
@@ -140,12 +150,19 @@ public class CMakeTargetInst
                 break;
         }
 
+        return buildType;
+    }
+
+    public bool Load(ReadOnlyTargetRules target, ModuleRules rules)
+    {
+        string buildType = GetBuildType(target);
+
+        Console.WriteLine("Loading cmake target: "+target);
+
         m_cmakeTargetPath=Path.GetFullPath(rules.Target.ProjectFile.FullName);
         m_cmakeTargetPath=Directory.GetParent(m_cmakeTargetPath).FullName+"/Plugins/CMakeTarget/Source";
-        Console.WriteLine("m_cmakeTargetPath: "+m_cmakeTargetPath);
 
         m_modulePath=Path.GetFullPath(rules.ModuleDirectory);
-        Console.WriteLine("m_modulePath: "+m_modulePath);
         m_targetPath=Path.Combine(m_modulePath, m_targetLocation);
 
         m_thirdPartyGeneratedPath=Path.Combine(rules.Target.ProjectFile.Directory.FullName, "Intermediate", "CMakeTarget");
@@ -155,14 +172,14 @@ public class CMakeTargetInst
 
         m_buildInfoFile="buildinfo_"+buildType+".output";
         m_buildInfoPath=Path.Combine(m_buildPath, m_buildInfoFile).Replace("\\", "/");
-
+        
         if(!Directory.Exists(m_generatedTargetPath))
             Directory.CreateDirectory(m_generatedTargetPath);
 
         if(!Directory.Exists(m_buildPath))
             Directory.CreateDirectory(m_buildPath);
 
-        var moduleBuilt = build(target, buildType);
+        var moduleBuilt = Build(target, buildType);
 
         if(!moduleBuilt)
         {
@@ -171,7 +188,7 @@ public class CMakeTargetInst
         return true;
     }
 
-    private bool build(ReadOnlyTargetRules target, string buildType)
+    private bool Build(ReadOnlyTargetRules target, string buildType)
     {
         string builtFile = Path.Combine(m_generatedTargetPath, buildType+".built");
         string projectCMakeLists=Path.GetFullPath(Path.Combine(m_targetPath, "CMakeLists.txt"));
@@ -196,7 +213,6 @@ public class CMakeTargetInst
             var configureCommand = CreateCMakeConfigCommand(target, m_buildPath, buildType);
             var configureCode = ExecuteCommandSync(configureCommand);
 
-            Console.WriteLine("configureCode: "+configureCode);
             if(configureCode!=0)
             {
                 Console.WriteLine("Cannot configure CMake project. Exited with code: "
@@ -208,7 +224,6 @@ public class CMakeTargetInst
         var buildCommand = CreateCMakeBuildCommand(m_buildPath, buildType);
         var buildCode = ExecuteCommandSync(buildCommand);
 
-        Console.WriteLine("buildCode: "+buildCode);
         if(buildCode!=0)
         {
             Console.WriteLine("Cannot build project. Exited with code: "+buildCode);
@@ -336,6 +351,7 @@ public class CMakeTargetInst
         {
             options=" -T host=x64";
         }
+        
 
         var generatorInfo=GetGeneratorInfo(target);
 
@@ -356,6 +372,7 @@ public class CMakeTargetInst
                         " "+generatorInfo.options+" "+
                         " -S \""+m_generatedTargetPath+"\""+
                         " -B \""+buildDirectory+"\""+
+                        " -DCMAKE_BUILD_TYPE="+GetBuildType(target)+
                         " -DCMAKE_INSTALL_PREFIX=\""+installPath+"\""+
                         toolChain+
                         options+
@@ -457,8 +474,6 @@ public class CMakeTargetInst
         var cmdInfo=GetExecuteCommandSync();
         string escapedCmd=" \""+command.Replace("\"", "\\\"")+" \"";
 
-        Console.WriteLine("Running: "+command);
-        Console.WriteLine("Actual: "+cmdInfo.cmd+" "+cmdInfo.options+escapedCmd);
         var processInfo = new ProcessStartInfo(cmdInfo.cmd, cmdInfo.options+escapedCmd)
         {
             CreateNoWindow=true,
@@ -477,7 +492,6 @@ public class CMakeTargetInst
         p.BeginErrorReadLine();
         p.WaitForExit();
 
-        Console.WriteLine("Exit code: "+p.ExitCode);
         if(p.ExitCode != 0)
         {
              Console.WriteLine(outputString);
@@ -499,16 +513,17 @@ public class CMakeTarget : ModuleRules
         Console.WriteLine("CMakeTarget load target: "+targetName+" loc:"+targetLocation);
         CMakeTargetInst cmakeTarget = new CMakeTargetInst(targetName, targetLocation, args);
 
-        if(!cmakeTarget.load(target, rules))
+        if(!cmakeTarget.Load(target, rules))
         {
             Console.WriteLine("CMakeTarget failed to load target: "+targetName);
-            cmakeTarget.addFailed(rules);    
+            cmakeTarget.AddFailed(rules);    
             return false;
         }
 
         if(!cmakeTarget.addRules(rules))
         {
-            cmakeTarget.addFailed(rules);    
+            cmakeTarget.AddFailed(rules);
+            Console.WriteLine("CMakeTarget failed to add rules: "+targetName);
             return false;
         }
 
