@@ -9,14 +9,14 @@ function(add_library)
     _add_library(${_args})
 endfunction()
 
-macro(_ue4_get_target_link_libraries addTarget target_file_list target_linker_file_list)
+function(_ue4_get_target_link_libraries addTarget target_file_list target_linker_file_list target_directories)
     foreach(target ${ARGN})
         if(TARGET ${target})
             get_target_property(target_libraries ${target} INTERFACE_LINK_LIBRARIES)
-
+            get_target_property(target_link_libraries ${target} LINK_LIBRARIES)
             get_target_property(target_type ${target} TYPE)
 
-            if(@FORCE_RELEASE_RUNTIME@)
+            if((CMAKE_CXX_COMPILER_ID STREQUAL "MSVC") AND (@FORCE_RELEASE_RUNTIME@))
                 if(NOT target_type STREQUAL "INTERFACE_LIBRARY")
                     set_property(TARGET ${target} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
                     get_target_property(isImported ${target} IMPORTED)
@@ -28,12 +28,13 @@ macro(_ue4_get_target_link_libraries addTarget target_file_list target_linker_fi
             
             if(target_libraries) 
                 #get info for targets libs
-                _ue4_get_target_link_libraries(TRUE ${target_file_list} ${target_linker_file_list} ${target_libraries})
+                _ue4_get_target_link_libraries(TRUE ${target_file_list} ${target_linker_file_list} ${target_directories} ${target_libraries})
             endif()
 
             if(${addTarget})
                 if(target_type STREQUAL "SHARED_LIBRARY")
-                    list(APPEND ${target_file_list} "\"$<TARGET_FILE:${target}>\"$<COMMA>")
+                    list(APPEND ${target_file_list} "\"$<TARGET_FILE:${target}>\"")
+                    list(APPEND ${target_directories} "\"$<TARGET_FILE_DIR:${target}>\"")
                 endif()
                 if(target_type STREQUAL "STATIC_LIBRARY"
                     OR target_type STREQUAL "SHARED_LIBRARY")
@@ -48,14 +49,22 @@ macro(_ue4_get_target_link_libraries addTarget target_file_list target_linker_fi
 
     if(${target_file_list})
         list(REMOVE_DUPLICATES ${target_file_list})
+        set(${target_file_list} ${${target_file_list}} PARENT_SCOPE)
+    endif()
+    if(${target_directories})
+        list(REMOVE_DUPLICATES ${target_directories})
+        set(${target_directories} ${${target_directories}} PARENT_SCOPE)
     endif()
     if(${target_linker_file_list})
         list(REMOVE_DUPLICATES ${target_linker_file_list})
+        set(${target_linker_file_list} ${${target_linker_file_list}} PARENT_SCOPE)
     endif()
-endmacro()
 
-macro(ue4_get_target_link_libraries target_file_list target_linker_file_list)
-    _ue4_get_target_link_libraries(TRUE ${target_file_list} ${target_linker_file_list} ${ARGN})
+    
+endfunction()
+
+macro(ue4_get_target_link_libraries target_file_list target_linker_file_list target_directories)
+    _ue4_get_target_link_libraries(TRUE ${target_file_list} ${target_linker_file_list} ${target_directories} ${ARGN})
 endmacro()
 
 macro(target_build_info build_info target)
@@ -66,17 +75,19 @@ macro(target_build_info build_info target)
 
     list(APPEND target_file_source_dependencies $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},SOURCES>>)
     
-    ue4_get_target_link_libraries(target_binary_libs target_link_lib_files ${target})
+    ue4_get_target_link_libraries(target_binary_libs target_link_lib_files target_binary_dirs ${target})
 
     string(REPLACE ";" "$<SEMICOLON>" target_file_dependencies "${target_file_dependencies}")
     string(REPLACE ";" "$<SEMICOLON>" target_file_source_dependencies "${target_file_source_dependencies}")
     string(REPLACE ";" "$<SEMICOLON>" target_binary_libs "${target_binary_libs}")
+    string(REPLACE ";" "$<SEMICOLON>" target_binary_dirs "${target_binary_dirs}")
     string(REPLACE ";" "$<SEMICOLON>" target_link_lib_files "${target_link_lib_files}")
 
     list(APPEND ${build_info} "dependencies=$<JOIN:${target_file_dependencies},$<COMMA>>")
     list(APPEND ${build_info} "sourcePath=$<TARGET_PROPERTY:${target},SOURCE_DIR>")
     list(APPEND ${build_info} "sourceDependencies=$<JOIN:${target_file_source_dependencies},$<COMMA>>")
     list(APPEND ${build_info} "binaries=$<JOIN:${target_binary_libs},$<COMMA>>")
+    list(APPEND ${build_info} "binaryDirectories=$<JOIN:${target_binary_dirs},$<COMMA>>")
     list(APPEND ${build_info} "libraries=$<JOIN:${target_link_lib_files},$<COMMA>>")
 endmacro()
 
@@ -95,6 +106,5 @@ target_build_info("@BUILD_TARGET_NAME@_build_info" @BUILD_TARGET_NAME@)
 project(@BUILD_TARGET_NAME@_build)
 
 string(REPLACE ";" "\n" @BUILD_TARGET_NAME@_build_info "${@BUILD_TARGET_NAME@_build_info}")
-#message(STATUS "build_info=${@BUILD_TARGET_NAME@_build_info}")
 
 file(GENERATE OUTPUT "@BUILD_TARGET_THIRDPARTY_DIR@/@BUILD_TARGET_NAME@/@BUILD_TARGET_BUILD_DIR@/buildinfo_$<CONFIG>.output" CONTENT "${@BUILD_TARGET_NAME@_build_info}")
