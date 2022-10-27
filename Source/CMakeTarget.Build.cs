@@ -295,7 +295,7 @@ public class CMakeTargetInst
         return generatorOptions;
     }
 
-    (string name, string options) GetGeneratorInfo(ReadOnlyTargetRules target)
+    Tuple<string, string> GetGeneratorInfo(ReadOnlyTargetRules target)
     {
         string name;
         string options;
@@ -320,7 +320,7 @@ public class CMakeTargetInst
             options="";
         }
 
-        return (name, options);
+        return Tuple.Create(name, options);
     }
 
     private string GetCMakeExe()
@@ -368,8 +368,8 @@ public class CMakeTargetInst
 
         var installPath = m_thirdPartyGeneratedPath;
 
-        var arguments = " -G \""+generatorInfo.name+"\""+
-                        " "+generatorInfo.options+" "+
+        var arguments = " -G \""+generatorInfo.Item1+"\""+
+                        " "+generatorInfo.Item2+" "+
                         " -S \""+m_generatedTargetPath+"\""+
                         " -B \""+buildDirectory+"\""+
                         " -DCMAKE_BUILD_TYPE="+GetBuildType(target)+
@@ -448,7 +448,7 @@ public class CMakeTargetInst
         return GetCMakeExe()+" --build \""+buildDirectory+"\" --target install --config "+buildType;
     }
 
-    private (string cmd, string options) GetExecuteCommandSync()
+    private Tuple<string, string> GetExecuteCommandSync()
     {
         string cmd = "";
         string options = "";
@@ -467,14 +467,21 @@ public class CMakeTargetInst
             cmd="bash";
             options="-c ";
         }
-        return (cmd, options);
+        return Tuple.Create(cmd, options);
     }
+
     private int ExecuteCommandSync(string command)
     {
         var cmdInfo=GetExecuteCommandSync();
-        string escapedCmd=" \""+command.Replace("\"", "\\\"")+" \"";
 
-        var processInfo = new ProcessStartInfo(cmdInfo.cmd, cmdInfo.options+escapedCmd)
+        if(BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Linux) 
+        {
+            command=" \""+command.Replace("\"", "\\\"")+" \"";
+        }
+
+        Console.WriteLine("Calling: "+cmdInfo.Item1+" "+cmdInfo.Item2+command);
+
+        var processInfo = new ProcessStartInfo(cmdInfo.Item1, cmdInfo.Item2+command)
         {
             CreateNoWindow=true,
             UseShellExecute=false,
