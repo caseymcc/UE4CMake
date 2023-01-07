@@ -6,6 +6,7 @@ using System.IO;
 using System.Diagnostics;
 using System.Text;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 
 public static class DateTimeExtensions
 {
@@ -36,11 +37,24 @@ public class CMakeTargetInst
     private string m_buildInfoFile;
     private string m_buildInfoPath;
 
+    private bool m_forceBuild=false;
+    private string m_forceBuildType;
+
     public CMakeTargetInst(string targetName, string targetLocation, string args)
     {
         m_targetName=targetName;
         m_targetLocation=targetLocation;
         m_cmakeArgs=args;
+
+        Regex build_type=new Regex(@"-DCMAKE_BUILD_TYPE=(\w*)");
+    
+        Match match=build_type.Match(args);
+
+        if(match.Success && (match.Groups.Count > 1))
+        {
+            m_forceBuild=true;
+            m_forceBuildType=match.Groups[1].Value;
+        }
     }
 
     public bool addRules(ModuleRules rules)
@@ -138,6 +152,9 @@ public class CMakeTargetInst
     private string GetBuildType(ReadOnlyTargetRules target)
     {
         string buildType = "Release";
+
+        if(m_forceBuild)
+            return m_forceBuildType;
 
         switch(target.Configuration)
         {
@@ -389,8 +406,16 @@ public class CMakeTargetInst
         string contents = File.ReadAllText(templateFilePath);
         bool forceReleaseRuntime=true;
 
-        if((target.Configuration == UnrealTargetConfiguration.Debug) && (target.bDebugBuildsActuallyUseDebugCRT))
-            forceReleaseRuntime=false;
+        if(m_forceBuild)
+        {
+            if(!m_forceBuildType.Equals("Release"))
+                forceReleaseRuntime=false;
+        }
+        else
+        {
+            if((target.Configuration == UnrealTargetConfiguration.Debug) && (target.bDebugBuildsActuallyUseDebugCRT))
+                forceReleaseRuntime=false;
+        }
         contents=contents.Replace("@FORCE_RELEASE_RUNTIME@", forceReleaseRuntime?"ON":"OFF");
 
         File.WriteAllText(path, contents);
