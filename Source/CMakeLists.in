@@ -68,7 +68,9 @@ macro(ue4_get_target_link_libraries target_file_list target_linker_file_list tar
 endmacro()
 
 macro(target_build_info build_info target)
-    list(APPEND ${build_info} "includes=$<JOIN:$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},INCLUDE_DIRECTORIES>>,$<COMMA>>")
+    list(APPEND target_includes $<TARGET_PROPERTY:${target},INCLUDE_DIRECTORIES>)
+    list(APPEND target_includes $<TARGET_PROPERTY:${target},INTERFACE_INCLUDE_DIRECTORIES>)
+    list(REMOVE_DUPLICATES target_includes)
 
     list(APPEND target_file_dependencies "@BUILD_TARGET_DIR@/CMakeLists.txt")
     list(APPEND target_file_dependencies $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},CMAKE_CONFIGURE_DEPENDS>>)
@@ -77,12 +79,14 @@ macro(target_build_info build_info target)
     
     ue4_get_target_link_libraries(target_binary_libs target_link_lib_files target_binary_dirs ${target})
 
+    string(REPLACE ";" "$<SEMICOLON>" target_includes "${target_includes}")
     string(REPLACE ";" "$<SEMICOLON>" target_file_dependencies "${target_file_dependencies}")
     string(REPLACE ";" "$<SEMICOLON>" target_file_source_dependencies "${target_file_source_dependencies}")
     string(REPLACE ";" "$<SEMICOLON>" target_binary_libs "${target_binary_libs}")
     string(REPLACE ";" "$<SEMICOLON>" target_binary_dirs "${target_binary_dirs}")
     string(REPLACE ";" "$<SEMICOLON>" target_link_lib_files "${target_link_lib_files}")
 
+    list(APPEND ${build_info} "includes=$<JOIN:${target_includes},$<COMMA>>")
     list(APPEND ${build_info} "dependencies=$<JOIN:${target_file_dependencies},$<COMMA>>")
     list(APPEND ${build_info} "sourcePath=$<TARGET_PROPERTY:${target},SOURCE_DIR>")
     list(APPEND ${build_info} "sourceDependencies=$<JOIN:${target_file_source_dependencies},$<COMMA>>")
