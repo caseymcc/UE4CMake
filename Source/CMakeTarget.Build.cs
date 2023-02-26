@@ -89,6 +89,9 @@ public class CMakeTargetInst
 
             foreach(string depend in dependencies)
             {
+                if(String.IsNullOrEmpty(depend))
+                    continue;
+                    
                 rules.ExternalDependencies.Add(depend);
             }
         }
@@ -103,6 +106,9 @@ public class CMakeTargetInst
 
             foreach(string depend in dependencies)
             {
+                if(String.IsNullOrEmpty(depend))
+                    continue;
+
                 string dependPath=Path.Combine(sourcePath, depend);
 
                 rules.ExternalDependencies.Add(dependPath);
@@ -114,6 +120,9 @@ public class CMakeTargetInst
 
             foreach(string include in includes)
             {
+                if(String.IsNullOrEmpty(include))
+                    continue;
+
                 rules.PublicIncludePaths.Add(include);
             }
         }
@@ -124,6 +133,10 @@ public class CMakeTargetInst
 
             foreach(string binaryDirectory in binaryDirectories)
             {
+                if(String.IsNullOrEmpty(binaryDirectory))
+                    continue;
+
+                Console.WriteLine("Add library path: "+binaryDirectory);
                 rules.PublicRuntimeLibraryPaths.Add(binaryDirectory);
             }
         }
@@ -134,6 +147,9 @@ public class CMakeTargetInst
 
             foreach(string library in libraries)
             {
+                if(String.IsNullOrEmpty(library))
+                    continue;
+
                 rules.PublicAdditionalLibraries.Add(library);
             }
         }
@@ -177,7 +193,7 @@ public class CMakeTargetInst
         Console.WriteLine("Loading cmake target: "+target);
 
         m_cmakeTargetPath=Path.GetFullPath(rules.Target.ProjectFile.FullName);
-        m_cmakeTargetPath=Directory.GetParent(m_cmakeTargetPath).FullName+"/Plugins/CMakeTarget/Source";
+        m_cmakeTargetPath=Directory.GetParent(m_cmakeTargetPath).FullName+"/Plugins/UE4CMake/Source";
 
         m_modulePath=Path.GetFullPath(rules.ModuleDirectory);
         m_targetPath=Path.Combine(m_modulePath, m_targetLocation);
