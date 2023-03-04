@@ -1,5 +1,6 @@
 
 using UnrealBuildTool;
+using EpicGames.Core;
 using System;
 using System.Reflection;
 using System.IO;
@@ -15,6 +16,33 @@ public static class DateTimeExtensions
         return dt1.Year == dt2.Year && dt1.Month == dt2.Month && dt1.Day == dt2.Day &&
                dt1.Hour == dt2.Hour && dt1.Minute == dt2.Minute && dt1.Second == dt2.Second;
     }   
+}
+
+public class GeneratorInfo
+{
+    public GeneratorInfo(string name, string options)
+    {
+        m_name=name;
+        m_options=options;
+        m_cCompiler="";
+        m_cppCompiler="";
+        m_linker="";
+    }
+
+    public GeneratorInfo(string name, string options, string cCompiler, string cppCompiler, string linker)
+    {
+        m_name=name;
+        m_options=options;
+        m_cCompiler=cCompiler;
+        m_cppCompiler=cppCompiler;
+        m_linker=linker;
+    }
+
+    public string m_name;
+    public string m_options;
+    public string m_cCompiler;
+    public string m_cppCompiler;
+    public string m_linker;
 }
 
 public class CMakeTargetInst
@@ -40,21 +68,35 @@ public class CMakeTargetInst
     private bool m_forceBuild=false;
     private string m_forceBuildType;
 
+    private bool m_includedToolchain=false;
+    private string m_includedToolchainPath;
+
     public CMakeTargetInst(string targetName, string targetLocation, string args)
     {
         m_targetName=targetName;
         m_targetLocation=targetLocation;
-        m_cmakeArgs=args;
 
-        Regex build_type=new Regex(@"-DCMAKE_BUILD_TYPE=(\w*)");
-    
-        Match match=build_type.Match(args);
+        Regex buildTypeRegex=new Regex(@"-DCMAKE_BUILD_TYPE=(\w*)");
+        Match buildTypeMatch=buildTypeRegex.Match(args);
 
-        if(match.Success && (match.Groups.Count > 1))
+        if(buildTypeMatch.Success && (buildTypeMatch.Groups.Count > 1))
         {
             m_forceBuild=true;
-            m_forceBuildType=match.Groups[1].Value;
+            m_forceBuildType=buildTypeMatch.Groups[1].Value;
         }
+
+        //check for toolchain file as we need to copy its contents
+        Regex toolChainRegex=new Regex(@"-DCMAKE_TOOLCHAIN_FILE=([\\\/.\w]*)");
+        Match toolChainMatch=toolChainRegex.Match(args);
+
+        if(toolChainMatch.Success && (toolChainMatch.Groups.Count > 1))
+        {
+            m_includedToolchain=true;
+            m_includedToolchainPath=toolChainMatch.Groups[1].Value;
+            args=toolChainRegex.Replace(args, @"");
+        }
+
+        m_cmakeArgs=args;
     }
 
     public bool addRules(ModuleRules rules)
@@ -212,7 +254,7 @@ public class CMakeTargetInst
         if(!Directory.Exists(m_buildPath))
             Directory.CreateDirectory(m_buildPath);
 
-        var moduleBuilt = Build(target, buildType);
+        var moduleBuilt = Build(target, rules, buildType);
 
         if(!moduleBuilt)
         {
@@ -221,7 +263,7 @@ public class CMakeTargetInst
         return true;
     }
 
-    private bool Build(ReadOnlyTargetRules target, string buildType)
+    private bool Build(ReadOnlyTargetRules target, ModuleRules rules, string buildType)
     {
         string builtFile = Path.Combine(m_generatedTargetPath, buildType+".built");
         string projectCMakeLists=Path.GetFullPath(Path.Combine(m_targetPath, "CMakeLists.txt"));
@@ -243,7 +285,7 @@ public class CMakeTargetInst
         {
             Console.WriteLine("Target "+m_targetName+" CMakeLists.txt out of date, rebuilding");
 
-            var configureCommand = CreateCMakeConfigCommand(target, m_buildPath, buildType);
+            var configureCommand = CreateCMakeConfigCommand(target, rules, m_buildPath, buildType);
             var configureCode = ExecuteCommandSync(configureCommand);
 
             if(configureCode!=0)
@@ -328,10 +370,13 @@ public class CMakeTargetInst
         return generatorOptions;
     }
 
-    Tuple<string, string> GetGeneratorInfo(ReadOnlyTargetRules target)
+    GeneratorInfo GetGeneratorInfo(ReadOnlyTargetRules target, ModuleRules rules)
     {
         string name;
         string options;
+        string cCompilerPath="";
+        string cppCompilerPath="";
+        string linkerPath="";
 
         if((target.Platform == UnrealTargetPlatform.Win64) 
 #if !UE_5_0_OR_LATER
@@ -346,6 +391,20 @@ public class CMakeTargetInst
         {
             name="Unix Makefiles";
             options="";
+
+            UEBuildPlatformSDK? buildSdk=UEBuildPlatformSDK.GetSDKForPlatform(target.Platform.ToString());
+
+            if(buildSdk != null)
+            {
+                string? internalSDKPath = buildSdk.GetInternalSDKPath();
+
+                if(!string.IsNullOrEmpty(internalSDKPath))
+                {
+                    cCompilerPath=Path.Combine(internalSDKPath, "bin", "clang");
+                    cppCompilerPath=Path.Combine(internalSDKPath, "bin", "clang++");
+                    linkerPath=Path.Combine(internalSDKPath, "bin", "lld");
+                }
+            }
         }
         else
         {
@@ -353,7 +412,7 @@ public class CMakeTargetInst
             options="";
         }
 
-        return Tuple.Create(name, options);
+        return new GeneratorInfo(name, options, cCompilerPath, cppCompilerPath, linkerPath);
     }
 
     private string GetCMakeExe()
@@ -371,7 +430,7 @@ public class CMakeTargetInst
         return program;
     }
 
-    private string CreateCMakeConfigCommand(ReadOnlyTargetRules target, string buildDirectory, string buildType)
+    private string CreateCMakeConfigCommand(ReadOnlyTargetRules target, ModuleRules rules, string buildDirectory, string buildType)
     {
         string program = GetCMakeExe();
         string options = "";
@@ -386,7 +445,7 @@ public class CMakeTargetInst
         }
         
 
-        var generatorInfo=GetGeneratorInfo(target);
+        var generatorInfo=GetGeneratorInfo(target, rules);
 
         string cmakeFile = Path.Combine(m_generatedTargetPath, "CMakeLists.txt");
         string toolchainPath = Path.Combine(m_generatedTargetPath, "toolchain.cmake");
@@ -394,15 +453,21 @@ public class CMakeTargetInst
         generateCMakeFile(target, cmakeFile, buildType);
         
         string toolChain="";
-        if(generateToolchain(target, toolchainPath))
+        if(generateToolchain(target, generatorInfo, toolchainPath))
         {
             toolChain=" -DCMAKE_TOOLCHAIN_FILE=\""+toolchainPath+"\"";
         }
 
+        if(!String.IsNullOrEmpty(generatorInfo.m_cCompiler))
+        {
+            options+=" -DCMAKE_C_COMPILER="+generatorInfo.m_cCompiler;
+            options+=" -DCMAKE_CXX_COMPILER="+generatorInfo.m_cppCompiler;
+        }
+
         var installPath = m_thirdPartyGeneratedPath;
 
-        var arguments = " -G \""+generatorInfo.Item1+"\""+
-                        " "+generatorInfo.Item2+" "+
+        var arguments = " -G \""+generatorInfo.m_name+"\""+
+                        " "+generatorInfo.m_options+" "+
                         " -S \""+m_generatedTargetPath+"\""+
                         " -B \""+buildDirectory+"\""+
                         " -DCMAKE_BUILD_TYPE="+GetBuildType(target)+
@@ -414,6 +479,19 @@ public class CMakeTargetInst
         Console.WriteLine("CMakeTarget calling cmake with: "+arguments);
 
         return program+arguments;
+    }
+
+    private void addIncludedToolchain(ref string contents)
+    {
+        if(!m_includedToolchain)
+            return;
+
+        string toolChainContents = File.ReadAllText(m_includedToolchainPath);
+           
+        if(String.IsNullOrEmpty(toolChainContents))
+            return;
+
+        contents+=toolChainContents;
     }
 
     private void generateWindowsToolchain(ReadOnlyTargetRules target, string path)
@@ -434,15 +512,43 @@ public class CMakeTargetInst
         }
         contents=contents.Replace("@FORCE_RELEASE_RUNTIME@", forceReleaseRuntime?"ON":"OFF");
 
+        addIncludedToolchain(ref contents);
+
         File.WriteAllText(path, contents);
     }
 
-    private bool generateToolchain(ReadOnlyTargetRules target, string path)
+    private void generateLinuxToolchain(ReadOnlyTargetRules target, GeneratorInfo generatorInfo, string path)
+    {
+        string templateFilePath = Path.Combine(m_cmakeTargetPath, "toolchains/linux_toolchain.in");
+        string contents = File.ReadAllText(templateFilePath);
+
+        contents=contents.Replace("@COMPILER@", generatorInfo.m_cCompiler);
+        contents=contents.Replace("@CPPCOMPILER@", generatorInfo.m_cppCompiler);
+        contents=contents.Replace("@LINKER@", generatorInfo.m_linker);
+        
+        addIncludedToolchain(ref contents);
+
+        File.WriteAllText(path, contents);
+    }
+
+    private bool generateToolchain(ReadOnlyTargetRules target, GeneratorInfo generatorInfo, string path)
     {
         if(target.Platform == UnrealTargetPlatform.Win64)
         {
             generateWindowsToolchain(target, path);
             return true;
+        }
+        else if(target.Platform == UnrealTargetPlatform.Linux)
+        {
+            generateLinuxToolchain(target, generatorInfo, path);
+            return true;
+        }
+        else
+        {
+            if(m_includedToolchain)
+            {
+                path=m_includedToolchainPath;
+            }
         }
         return false;
     }
