@@ -124,6 +124,26 @@ public class CMakeTargetInst
             values.Add(tokens[0], tokens[1]);
         }
 
+        if(values.ContainsKey("cppStandard"))
+        {
+            string standard = values["cppStandard"];
+
+            if(!String.IsNullOrEmpty(standard))
+            {
+                if(standard.Equals("11"))
+                    rules.CppStandard=CppStandardVersion.Default;
+                else if(standard.Equals("14"))
+                    rules.CppStandard=CppStandardVersion.Cpp14;
+                else if(standard.Equals("17"))
+                    rules.CppStandard=CppStandardVersion.Cpp17;
+                else if(standard.Equals("20"))
+                    rules.CppStandard=CppStandardVersion.Cpp20;
+                else
+                    rules.CppStandard=CppStandardVersion.Latest;
+
+                rules.PublicSystemLibraries.Add("stdc++");
+            }
+        }
 
         if(values.ContainsKey("dependencies"))
         {
@@ -137,6 +157,7 @@ public class CMakeTargetInst
                 rules.ExternalDependencies.Add(depend);
             }
         }
+
         if(values.ContainsKey("sourceDependencies"))
         {
             string sourcePath="";
@@ -156,6 +177,7 @@ public class CMakeTargetInst
                 rules.ExternalDependencies.Add(dependPath);
             }
         }
+
         if(values.ContainsKey("includes"))
         {
             string[] includes = values["includes"].Split(',');
@@ -228,7 +250,7 @@ public class CMakeTargetInst
         return buildType;
     }
 
-    public bool Load(ReadOnlyTargetRules target, ModuleRules rules)
+    public bool Load(ReadOnlyTargetRules target, ModuleRules rules, bool useSystemCompiler)
     {
         string buildType = GetBuildType(target);
 
@@ -254,7 +276,7 @@ public class CMakeTargetInst
         if(!Directory.Exists(m_buildPath))
             Directory.CreateDirectory(m_buildPath);
 
-        var moduleBuilt = Build(target, rules, buildType);
+        var moduleBuilt = Build(target, rules, buildType, useSystemCompiler);
 
         if(!moduleBuilt)
         {
@@ -263,7 +285,7 @@ public class CMakeTargetInst
         return true;
     }
 
-    private bool Build(ReadOnlyTargetRules target, ModuleRules rules, string buildType)
+    private bool Build(ReadOnlyTargetRules target, ModuleRules rules, string buildType, bool useSystemCompiler)
     {
         string builtFile = Path.Combine(m_generatedTargetPath, buildType+".built");
         string projectCMakeLists=Path.GetFullPath(Path.Combine(m_targetPath, "CMakeLists.txt"));
@@ -285,7 +307,7 @@ public class CMakeTargetInst
         {
             Console.WriteLine("Target "+m_targetName+" CMakeLists.txt out of date, rebuilding");
 
-            var configureCommand = CreateCMakeConfigCommand(target, rules, m_buildPath, buildType);
+            var configureCommand = CreateCMakeConfigCommand(target, rules, m_buildPath, buildType, useSystemCompiler);
             var configureCode = ExecuteCommandSync(configureCommand);
 
             if(configureCode!=0)
@@ -430,7 +452,7 @@ public class CMakeTargetInst
         return program;
     }
 
-    private string CreateCMakeConfigCommand(ReadOnlyTargetRules target, ModuleRules rules, string buildDirectory, string buildType)
+    private string CreateCMakeConfigCommand(ReadOnlyTargetRules target, ModuleRules rules, string buildDirectory, string buildType, bool useSystemCompiler)
     {
         string program = GetCMakeExe();
         string options = "";
@@ -453,12 +475,12 @@ public class CMakeTargetInst
         generateCMakeFile(target, cmakeFile, buildType);
         
         string toolChain="";
-        if(generateToolchain(target, generatorInfo, toolchainPath))
+        if(generateToolchain(target, generatorInfo, toolchainPath, useSystemCompiler))
         {
             toolChain=" -DCMAKE_TOOLCHAIN_FILE=\""+toolchainPath+"\"";
         }
 
-        if(!String.IsNullOrEmpty(generatorInfo.m_cCompiler))
+        if(!String.IsNullOrEmpty(generatorInfo.m_cCompiler) && !useSystemCompiler)
         {
             options+=" -DCMAKE_C_COMPILER="+generatorInfo.m_cCompiler;
             options+=" -DCMAKE_CXX_COMPILER="+generatorInfo.m_cppCompiler;
@@ -517,10 +539,15 @@ public class CMakeTargetInst
         File.WriteAllText(path, contents);
     }
 
-    private void generateLinuxToolchain(ReadOnlyTargetRules target, GeneratorInfo generatorInfo, string path)
+    private void generateLinuxToolchain(ReadOnlyTargetRules target, GeneratorInfo generatorInfo, string path, bool useSystemCompiler)
     {
         string templateFilePath = Path.Combine(m_cmakeTargetPath, "toolchains/linux_toolchain.in");
         string contents = File.ReadAllText(templateFilePath);
+
+        if(useSystemCompiler)
+            contents=contents.Replace("@USE_COMPILER@", "0");
+        else
+            contents=contents.Replace("@USE_COMPILER@", "1");
 
         contents=contents.Replace("@COMPILER@", generatorInfo.m_cCompiler);
         contents=contents.Replace("@CPPCOMPILER@", generatorInfo.m_cppCompiler);
@@ -531,7 +558,7 @@ public class CMakeTargetInst
         File.WriteAllText(path, contents);
     }
 
-    private bool generateToolchain(ReadOnlyTargetRules target, GeneratorInfo generatorInfo, string path)
+    private bool generateToolchain(ReadOnlyTargetRules target, GeneratorInfo generatorInfo, string path, bool useSystemCompiler)
     {
         if(target.Platform == UnrealTargetPlatform.Win64)
         {
@@ -540,7 +567,7 @@ public class CMakeTargetInst
         }
         else if(target.Platform == UnrealTargetPlatform.Linux)
         {
-            generateLinuxToolchain(target, generatorInfo, path);
+            generateLinuxToolchain(target, generatorInfo, path, useSystemCompiler);
             return true;
         }
         else
@@ -662,12 +689,12 @@ public class CMakeTarget : ModuleRules
         PrivateDependencyModuleNames.AddRange(new string[] { "CoreUObject", "Engine"});
     }
     
-    public static bool add(ReadOnlyTargetRules target, ModuleRules rules, string targetName, string targetLocation, string args)
+    public static bool add(ReadOnlyTargetRules target, ModuleRules rules, string targetName, string targetLocation, string args, bool useSystemCompiler=false)
     {
         Console.WriteLine("CMakeTarget load target: "+targetName+" loc:"+targetLocation);
         CMakeTargetInst cmakeTarget = new CMakeTargetInst(targetName, targetLocation, args);
 
-        if(!cmakeTarget.Load(target, rules))
+        if(!cmakeTarget.Load(target, rules, useSystemCompiler))
         {
             Console.WriteLine("CMakeTarget failed to load target: "+targetName);
             cmakeTarget.AddFailed(rules);    
