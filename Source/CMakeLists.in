@@ -15,7 +15,7 @@ function(_ue4_get_target_link_libraries addTarget target_file_list target_linker
             get_target_property(target_libraries ${target} INTERFACE_LINK_LIBRARIES)
             get_target_property(target_link_libraries ${target} LINK_LIBRARIES)
             get_target_property(target_type ${target} TYPE)
-
+            
             if((CMAKE_CXX_COMPILER_ID STREQUAL "MSVC") AND (@FORCE_RELEASE_RUNTIME@))
                 if(NOT target_type STREQUAL "INTERFACE_LIBRARY")
                     set_property(TARGET ${target} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
@@ -86,6 +86,7 @@ macro(target_build_info build_info target)
     string(REPLACE ";" "$<SEMICOLON>" target_binary_dirs "${target_binary_dirs}")
     string(REPLACE ";" "$<SEMICOLON>" target_link_lib_files "${target_link_lib_files}")
 
+    list(APPEND ${build_info} "cppStandard=$<TARGET_PROPERTY:${target},CXX_STANDARD>")
     list(APPEND ${build_info} "includes=$<JOIN:$<REMOVE_DUPLICATES:${target_includes}>,$<COMMA>>")
     list(APPEND ${build_info} "dependencies=$<JOIN:$<REMOVE_DUPLICATES:${target_file_dependencies}>,$<COMMA>>")
     list(APPEND ${build_info} "sourcePath=$<TARGET_PROPERTY:${target},SOURCE_DIR>")
