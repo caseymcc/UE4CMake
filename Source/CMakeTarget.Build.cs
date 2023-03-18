@@ -99,7 +99,7 @@ public class CMakeTargetInst
         m_cmakeArgs=args;
     }
 
-    public bool addRules(ModuleRules rules)
+    public bool addRules(ModuleRules rules, bool useSystemCompiler)
     {
         Console.WriteLine("Loading build info file: "+m_buildInfoPath);
 
@@ -141,7 +141,8 @@ public class CMakeTargetInst
                 else
                     rules.CppStandard=CppStandardVersion.Latest;
 
-                rules.PublicSystemLibraries.Add("stdc++");
+                if((!useSystemCompiler) && (rules.Target.Platform == UnrealTargetPlatform.Linux))
+                    rules.PublicSystemLibraries.Add("stdc++"); //only include if using included compiler and linux  
             }
         }
 
@@ -701,7 +702,7 @@ public class CMakeTarget : ModuleRules
             return false;
         }
 
-        if(!cmakeTarget.addRules(rules))
+        if(!cmakeTarget.addRules(rules, useSystemCompiler))
         {
             cmakeTarget.AddFailed(rules);
             Console.WriteLine("CMakeTarget failed to add rules: "+targetName);
