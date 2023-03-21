@@ -35,7 +35,7 @@ public class {YourProject}:ModuleRules
 }
 ```
 - {lib's cmake target name} - target name in the libraries `CMakeLists.txt` file, name provided to add_library({target name})
-- {location to cmake lib source} - directory of libraries `CMakeLists.txt`, it should be relative to your projects `{Project}.Build.cs`.
+- {location to cmake lib source} - directory of libraries `CMakeLists.txt`, it can be relative to your projects `{Project}.Build.cs` or an absolute path (although you should generate it from something relative like, this.ModuleDirectory).
 - {cmake args} - any cmake arguments you want to provide to the target, some information is pulled from the unreal build system like, `BUILD_TYPE`, `INSTALL_PATH`, `CXX_COMPILER`, and etc... but you can still override them via this argument and set any options.
 - {bool, use system compiler} - optional linux only,  tells the build system to use the system compiler over the embbeded compiler in UE4/5. The embbeded compiler can be limited although it is relatively new clang version, for example even though it supports C++17 it does not include the std::filesystem library. Likely if you use this option your cmake library needs to be a shared object (.so) as static linking from a different compiler likely won't work.
 
@@ -97,8 +97,8 @@ using UnrealBuildTool;
 
 public class FastNoise2Example : ModuleRules
 {
-	public FastNoise2Example(ReadOnlyTargetRules Target) : base(Target)
-	{
+    public FastNoise2Example(ReadOnlyTargetRules Target) : base(Target)
+    {
         ...
     }
 }
@@ -109,10 +109,10 @@ using UnrealBuildTool;
 
 public class FastNoise2Example : ModuleRules
 {
-	public FastNoise2Example(ReadOnlyTargetRules Target) : base(Target)
-	{
+    public FastNoise2Example(ReadOnlyTargetRules Target) : base(Target)
+    {
         ...
-        CMakeTarget.add(Target, this, "FastNoise", Path.Combine(this.ModuleDirectory, "../Deps/FastNoise2"), "-DFASTNOISE2_NOISETOOL=OFF");
+        CMakeTarget.add(Target, this, "FastNoise", Path.Combine(this.ModuleDirectory, "../Deps/FastNoise2"), "-DFASTNOISE2_NOISETOOL=OFF", true);
         ...
     }
 }
