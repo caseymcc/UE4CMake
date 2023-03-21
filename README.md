@@ -3,11 +3,11 @@
 # UE4CMake
 Provides a simple way to add a cmake lib to any Unreal Engine 4 or 5 project. 
 
-This might be a bit of a hack so may not work as the Unreal Engine changes. Since there is no easy way to include a `.cs` file into the current build system (as far as I a can tell) this project sets itself up as a empty plugin.
+It works by setting itself up as a empty plugin, this allows the `.cs` build files to generate an Assembly that will be included into your project through the plugin system.
 
-Copy the contents of this repo (or git submodule it) into your UE4 project under `Plugins/UE4CMake`. The `.uplugin` file will setup the code as a plugin and the `.Build.cs` file sets up an empty plugin (but at least the `.cs` file is built as an Assembly).
+Copy the contents of this repo (or git submodule it) into your UE4/5 project under `Plugins/UE4CMake`. The directory naming maters as some of the build script is hard coded to use the above naming (as there is no easy way to get the specific plugin directory otherwise). The `.uplugin` file sets up a plugin with no source, however it allows the `CMakeTarget.Build.cs` file to be compiled and included with your project.
 
-In your UE4 project file `.uproject` (or if you are building a plugin it should work with your `.uplugin` file) add `CMakeTarget` as a plugin like follows
+In your UE4/5 project file `.uproject` (or if you are building a plugin it should work with your `.uplugin` file) add `CMakeTarget` as a plugin as follows
 ```
     "FileVersion": 3,
     ...
@@ -18,9 +18,9 @@ In your UE4 project file `.uproject` (or if you are building a plugin it should 
 		}
 	]
 ```
-This will force the plugin to be built (again just need the Assembly built from the `.cs` file) and will include the plugin's Assembly into your build scripts.
+This generates the UE4CMake Assembly and links it with your build Assembly which will allow you to call the functions in the UE4CMake build scripts.
 
-From there you can include any modern cmake project (older cmake may/may not have issues). Just call the static function `CMakeTarget.add()` with the `TargetRules`, `ModuleRules`, `lib's cmake target name`, `location of lib` and any `cmake args`.
+From there you can include any modern cmake project (older cmake may/may not have issues). Just call the static function `CMakeTarget.add()` with the `TargetRules`, `ModuleRules`, `lib's cmake target name`, `location of lib` and any `cmake args`. 
 
 ```c++
 public class {YourProject}:ModuleRules
@@ -28,13 +28,21 @@ public class {YourProject}:ModuleRules
     public {YourProject}(ReadOnlyTargetRules Target) : base(Target)
     {
         ...
-        CMakeTarget.add(Target, this, "{lib's cmake target name}", "{location to cmake lib source}", "{cmake args}");
+        CMakeTarget.add(Target, this, "{lib's cmake target name}", "{location to cmake lib source}", "{cmake args}", {bool, use system compiler});
         ...
     }
 }
 ```
+- {lib's cmake target name} - target name in the libraries `CMakeLists.txt` file, name proviced to add_library({target name})
+- {location to cmake lib source} - directory of libraries `CMakeLists.txt`, it should be relative to your projects `{Project}.Build.cs`.
+- {cmake args} - any cmake arguments you want to provide to the target, some information is pulled from the unreal build system like, `BUILD_TYPE`, `INSTALL_PATH`, `CXX_COMPILER`, and etc... but you can still override them via this argument and set any options.
+- {bool, use system compiler} - optional linux only,  tells the build system to use the system compiler over the embbeded compiler in UE4/5. The embbeded compiler can be limited although it is relatively new clang version, for example even though it supports C++17 it does not include the std::filesystem library. Likely if you use this option your cmake library needs to be a shared object (.so) as static linking from a different compiler likely won't work.
 
-The CMakeTarget will then create a directory in your Intermediate directory under `Intermediate/CMakeTarget/{LibName}`. It will generate a CMakeLists.txt file that will link to cmake libraries directory and will call cmake to generate the build files under `build` in the same `Intermediate/CMakeTarget/{LibName}` directory. Once the cmake generation is complete it will then use cmake to build the lib and will fetch the libs includes and addtional libraries from its target name and then automatically add that to the `ModuleRules` with `PublicIncludePaths` and `PublicAdditionalLibraries`. It will also add the cmake target's source/CMakeLists files to `ModuleRules.ExternalDependencies` so that changes to the cmake target will outdate the UE4 project which will force a build of the cmake target. If the cmake generation or build fails it will add a non existent file to the dependencies forcing cmake run again on the next build. Once the cmake completes successfully the non existent file will no longer be included.
+## How it works
+
+When you project build files are generated, CMakeTarget will create a directory in your Intermediate directory under `Intermediate/CMakeTarget/{LibName}`. It will generate a CMakeLists.txt file that will link to added library directory. It will then call cmake to generate the build files for that library under `build` in the same `Intermediate/CMakeTarget/{LibName}` directory. Once the cmake generation is complete it will then use cmake to build the library and will fetch the library's include directoryes and additonal library libraries required for the target. It will then automatically add those to the `ModuleRules` varibles `PublicIncludePaths` and `PublicAdditionalLibraries`. It will also add the cmake target's CMakeLists file and source files to `ModuleRules.ExternalDependencies` so that changes to the cmake target or it's source will outdate the UE4/5 project which will force a re-build of the cmake target. If the cmake generation or build fails it will add a non existent file to the dependencies forcing cmake to run again on the next build. Once the cmake completes successfully the non existent file will no longer be included.
+
+The above cmake functionality generates an output file in the `Intermediate/CMakeTarget/{LibName}/Build` directory buildinfo_{BuildType}.ouput, this includes all the information that is added to the `ModuleRules`. This same directory includes all the cmake build information that is generated and will include cmake logs if you run into errors. 
 
 There is support to get the binary locations of the lib but is not currently setup.
 
