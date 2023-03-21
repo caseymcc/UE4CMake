@@ -3,10 +3,10 @@
 # UE4CMake
 Provides a simple way to add a cmake lib to any Unreal Engine 4 or 5 project. 
 
-It works by setting itself up as a empty plugin, this allows the `.cs` build files to generate an Assembly that will be included into your project through the plugin system.
+It works by setting itself up as an empty plugin, this allows the `.cs` build files to generate an Assembly that will be included into your project through the plugin system.
 
 ## Setup
-Copy the contents of this repo (or git submodule it) into your UE4/5 project under `Plugins/UE4CMake`. The directory naming maters as some of the build script is hard coded to use the above naming (as there is no easy way to get the specific plugin directory otherwise). The `.uplugin` file sets up a plugin with no source, however it allows the `CMakeTarget.Build.cs` file to be compiled and included with your project.
+Copy the contents of this repo (or git submodule it) into your UE4/5 project under `Plugins/UE4CMake`. The directory naming matters as some of the build script is hard coded to use the above naming (as there is no easy way to get the specific plugin directory otherwise). The `.uplugin` file sets up a plugin with no source, however it allows the `CMakeTarget.Build.cs` file to be compiled and included with your project.
 
 In your UE4/5 project file `.uproject` (or if you are building a plugin it should work with your `.uplugin` file) add `CMakeTarget` as a plugin as follows
 ```
