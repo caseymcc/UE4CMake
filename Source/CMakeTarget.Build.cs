@@ -53,8 +53,6 @@ public class CMakeTargetInst
     private string m_targetLocation;
     private string m_targetPath;
     private string m_cmakeArgs;
-//    private string[] m_includeDirectories;
-//    private string[] m_libraries;
 
     private string m_buildDirectory;
     private string m_buildPath;
@@ -99,7 +97,7 @@ public class CMakeTargetInst
         m_cmakeArgs=args;
     }
 
-    public bool addRules(ModuleRules rules)
+    public bool addRules(ModuleRules rules, bool useSystemCompiler)
     {
         Console.WriteLine("Loading build info file: "+m_buildInfoPath);
 
@@ -141,7 +139,8 @@ public class CMakeTargetInst
                 else
                     rules.CppStandard=CppStandardVersion.Latest;
 
-                rules.PublicSystemLibraries.Add("stdc++");
+                if((!useSystemCompiler) && (rules.Target.Platform == UnrealTargetPlatform.Linux))
+                    rules.PublicSystemLibraries.Add("stdc++");
             }
         }
 
@@ -239,10 +238,10 @@ public class CMakeTargetInst
         switch(target.Configuration)
         {
             case UnrealTargetConfiguration.Debug:
-            case UnrealTargetConfiguration.Development:
             case UnrealTargetConfiguration.DebugGame:
                 buildType="Debug";
                 break;
+            case UnrealTargetConfiguration.Development:
             default:
                 break;
         }
@@ -392,6 +391,209 @@ public class CMakeTargetInst
         return generatorOptions;
     }
 
+    public static bool ShouldEnableOptimization(ModuleRules.CodeOptimization Setting, UnrealTargetConfiguration Configuration, bool bIsEngineModule)
+    {
+        switch(Setting)
+        {
+            case ModuleRules.CodeOptimization.Never:
+                return false;
+            case ModuleRules.CodeOptimization.Default:
+            case ModuleRules.CodeOptimization.InNonDebugBuilds:
+                return (Configuration == UnrealTargetConfiguration.Debug)? false : (Configuration != UnrealTargetConfiguration.DebugGame || bIsEngineModule);
+            case ModuleRules.CodeOptimization.InShippingBuildsOnly:
+                return (Configuration == UnrealTargetConfiguration.Shipping);
+            default:
+                return true;
+        }
+    }
+    private string GetClangGeneratorOptions(ReadOnlyTargetRules target, ModuleRules rules, string sdkDirectory)
+    {
+        string cxxOptions="";
+        string generatorOptions="";
+
+        bool bOptimizeCode = ShouldEnableOptimization(rules.OptimizeCode, target.Configuration, rules.bTreatAsEngineModule);
+
+//        if(!bOptimizeCode)
+//        {
+//            cxxOptions+="-O0";
+//        }
+//        else
+//        {
+//            // Don't over optimise if using Address/MemorySanitizer or you'll get false positive errors due to erroneous optimisation of necessary Address/MemorySanitizer instrumentation.
+////            if (Options.HasFlag(ClangToolChainOptions.EnableAddressSanitizer) || Options.HasFlag(ClangToolChainOptions.EnableMemorySanitizer))
+////            {
+////                cxxOptions+="-O1 -g ";
+////
+////                // This enables __asan_default_options() in UnixCommonStartup.h which disables the leak detector
+////                generatorOptions+="-DDISABLE_ASAN_LEAK_DETECTOR=1 ";
+////            }
+////            else if (Options.HasFlag(ClangToolChainOptions.EnableThreadSanitizer))
+////            {
+////                cxxOptions+="-O1 -g ";
+////            }
+////            else
+//            {
+//                if (target.OptimizationLevel == OptimizationMode.Size)
+//                {
+//                    cxxOptions+="-Oz ";
+//                }
+//                else if (target.OptimizationLevel == OptimizationMode.SizeAndSpeed)
+//                {
+//                    cxxOptions+="-Os ";
+//                    if (target.Architecture.StartsWith("aarch64"))
+//                    {
+//                        cxxOptions+="-moutline ";
+//                    }
+//                }
+//                else
+//                {
+//                    cxxOptions+="-O3 ";
+//                }
+//            }
+//        }
+//
+//        bool bRetainFramePointers = target.bRetainFramePointers
+////            || Options.HasFlag(ClangToolChainOptions.EnableAddressSanitizer) || Options.HasFlag(ClangToolChainOptions.EnableMemorySanitizer)
+//            || target.Configuration == UnrealTargetConfiguration.Debug;
+//
+//        if (target.Configuration == UnrealTargetConfiguration.Shipping)
+//        {
+//            if (!bRetainFramePointers)
+//            {
+//                cxxOptions+="-fomit-frame-pointer ";
+//            }
+//        }
+//        // switches to help debugging
+//        else if (target.Configuration == UnrealTargetConfiguration.Debug)
+//        {
+//            cxxOptions+="-fno-inline ";                   // disable inlining for better debuggability (e.g. callstacks, "skip file" in gdb)
+//            cxxOptions+="-fstack-protector ";             // detect stack smashing
+//        }
+//
+//        if (bRetainFramePointers)
+//        {
+//            cxxOptions+="-fno-optimize-sibling-calls ";
+//            cxxOptions+="-fno-omit-frame-pointer ";
+//        }
+//
+////        if (CompilerVersionGreaterOrEqual(12, 0, 0))
+//        {
+//            cxxOptions+="-fbinutils-version=2.36 ";
+//        }
+//
+//        cxxOptions+="-fno-math-errno ";
+//        if (target.Architecture.StartsWith("x86_64"))
+//        {
+//            cxxOptions+="-mssse3 "; // enable ssse3 by default for x86. This is default on for MSVC so lets reflect that here
+//        }
+//
+////        if (target.bShouldCompileAsDLL)
+//        if(target.BuildEnvironment == TargetBuildEnvironment.Shared)
+//        {
+//            cxxOptions+="-fPIC ";
+//            // Use local-dynamic TLS model. This generates less efficient runtime code for __thread variables, but avoids problems of running into
+//            // glibc/ld.so limit (DTV_SURPLUS) for number of dlopen()'ed DSOs with static TLS (see e.g. https://www.cygwin.com/ml/libc-help/2013-11/msg00033.html)
+//            cxxOptions+="-ftls-model=local-dynamic ";
+//        }
+//        else
+//        {
+//            cxxOptions+="-ffunction-sections ";
+//            cxxOptions+="-fdata-sections ";
+//        }
+//
+////        if (bSuppressPIE && !target.bShouldCompileAsDLL)
+////        {
+////            cxxOptions+="-fno-PIE ";
+////        }
+//
+//        //if(target.bPGOOptimize)
+//        //    generatorOptions+=" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=TRUE";
+//        //else 
+//        if(target.bPGOProfile)
+//            cxxOptions+="-fprofile-generate ";
+//
+//        if(!target.bUseInlining)
+//            cxxOptions+="-fno-inline-functions ";
+//
+//        if(rules.bUseRTTI)
+//            cxxOptions+="-frtti ";
+//        else
+//            cxxOptions+="-fno-rtti ";
+//
+////        if(target.bEnableExceptions)
+////        if(target.bForceEnableExceptions)
+//        {
+//            cxxOptions+="-fexceptions ";
+//            generatorOptions+="-DPLATFORM_EXCEPTIONS_DISABLED=0 ";
+//        }
+////        else
+////        {
+////            cxxOptions+="-fno-exceptions ";
+////            generatorOptions+="-DPLATFORM_EXCEPTIONS_DISABLED=1 ";
+////        }
+
+        //for static linking had to copy the following from Engine/Source/Programs/UnrealBuildTool/Platform/Linux/LinuxToolChain.cs
+        cxxOptions+=" -Wall";
+        cxxOptions+=" -Werror";
+        cxxOptions+=" -Wdelete-non-virtual-dtor";
+        cxxOptions+=" -Wenum-conversion";
+        cxxOptions+=" -Wbitfield-enum-conversion";
+        cxxOptions+=" -Wno-enum-enum-conversion";
+        cxxOptions+=" -Wno-enum-float-conversion";
+        cxxOptions+=" -Wno-unused-but-set-variable";
+        cxxOptions+=" -Wno-unused-but-set-parameter";
+        cxxOptions+=" -Wno-ordered-compare-function-pointers";
+        cxxOptions+=" -Wno-gnu-string-literal-operator-template";
+        cxxOptions+=" -Wno-inconsistent-missing-override";
+        cxxOptions+=" -Wno-invalid-offsetof";
+        cxxOptions+=" -Wno-switch";
+        cxxOptions+=" -Wno-tautological-compare";
+        cxxOptions+=" -Wno-unknown-pragmas";
+        cxxOptions+=" -Wno-unused-function";
+        cxxOptions+=" -Wno-unused-lambda-capture";
+        cxxOptions+=" -Wno-unused-local-typedef";
+        cxxOptions+=" -Wno-unused-private-field";
+        cxxOptions+=" -Wno-unused-variable";
+        cxxOptions+=" -Wno-undefined-var-template";
+        cxxOptions+=" -Wshadow";
+//        cxxOptions+=" -Wundef";
+        cxxOptions+=" -Wno-float-conversion";
+        cxxOptions+=" -Wno-implicit-float-conversion";
+        cxxOptions+=" -Wno-implicit-int-conversion";
+        cxxOptions+=" -Wno-c++11-narrowing";
+        cxxOptions+=" -fdiagnostics-absolute-paths";
+        cxxOptions+=" -fdiagnostics-color";
+//        cxxOptions+=" -Wno-undefined-bool-conversion";
+        cxxOptions+=" -O3";
+        cxxOptions+=" -fexceptions";
+        cxxOptions+=" -DPLATFORM_EXCEPTIONS_DISABLED=0";
+        cxxOptions+=" -gdwarf-4";
+        cxxOptions+=" -ggnu-pubnames";
+        cxxOptions+=" -fvisibility-ms-compat";
+        cxxOptions+=" -fvisibility-inlines-hidden";
+        cxxOptions+=" -nostdinc++";
+        cxxOptions+=" -isystem\""+rules.EngineDirectory+"/Source/"+target.UEThirdPartySourceDirectory+"Unix/LibCxx/include\"";
+        cxxOptions+=" -isystem\""+rules.EngineDirectory+"/Source/"+target.UEThirdPartySourceDirectory+"Unix/LibCxx/include/c++/v1\"";
+        cxxOptions+=" -fbinutils-version=2.36";
+        cxxOptions+=" -fno-math-errno";
+        cxxOptions+=" -fno-rtti";
+        cxxOptions+=" -mssse3";
+        cxxOptions+=" -fPIC";
+        cxxOptions+=" -ftls-model=local-dynamic";
+        cxxOptions+=" -D_LINUX64";
+        cxxOptions+=" -target x86_64-unknown-linux-gnu";
+        cxxOptions+=" --sysroot=\""+sdkDirectory+"\"";
+//        cxxOptions+=" -x c++";
+        cxxOptions+=" -std=c++17";
+        cxxOptions+=" -fpch-validate-input-files-content";
+
+        if(cxxOptions.Length>0)
+            generatorOptions+="-DCMAKE_CXX_FLAGS=\""+cxxOptions+"\" ";
+
+        Console.WriteLine("Clang generatorOptions: "+generatorOptions);
+        return generatorOptions;
+    }
+
     GeneratorInfo GetGeneratorInfo(ReadOnlyTargetRules target, ModuleRules rules)
     {
         string name;
@@ -425,6 +627,8 @@ public class CMakeTargetInst
                     cCompilerPath=Path.Combine(internalSDKPath, "bin", "clang");
                     cppCompilerPath=Path.Combine(internalSDKPath, "bin", "clang++");
                     linkerPath=Path.Combine(internalSDKPath, "bin", "lld");
+
+                    options=GetClangGeneratorOptions(target, rules, internalSDKPath);
                 }
             }
         }
@@ -701,7 +905,7 @@ public class CMakeTarget : ModuleRules
             return false;
         }
 
-        if(!cmakeTarget.addRules(rules))
+        if(!cmakeTarget.addRules(rules, useSystemCompiler))
         {
             cmakeTarget.AddFailed(rules);
             Console.WriteLine("CMakeTarget failed to add rules: "+targetName);
