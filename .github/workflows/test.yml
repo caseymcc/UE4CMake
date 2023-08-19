@@ -34,5 +34,5 @@ jobs:
           path: project/Plugins/UE4CMake
 
       - name: Build UE4_FastNoise
-          run: ls
+        run: ls
 #            /home/ue4/UnrealEngine/Engine/Build/BatchFiles/RunUAT.sh BuildGame -project=/project/FastNoise2Example.uproject
