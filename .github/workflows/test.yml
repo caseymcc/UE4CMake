@@ -1,0 +1,37 @@
+name: Test
+on:
+  push:
+    branches: [ master, actions ]
+  pull_request:
+    branches: [ master, actions ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        engine-version: [ dev-4.27, dev-5.0, dev-5.1, dev-5.2 ]
+    container:
+      image: ghcr.io/epicgames/unreal-engine:${{ matrix.engine-version }}
+    steps:
+
+    - name: Checkout UE4_FastNoise
+      uses: actions/checkout@v3
+      with:
+        repository: caseymcc/UE4_FastNoise2
+        path: project
+        submodules: recursive
+        sparse-checkout:
+          Config
+          Source
+          FastNoise2Example.uplugin
+          Makefile
+
+    - name: Checkout UE4CMake
+      uses: actions/checkout@v3
+      with:
+        path: project/Plugins/UE4CMake
+
+    - name: Build UE4_FastNoise
+        run: |
+          /home/ue4/UnrealEngine/Engine/Build/BatchFiles/RunUAT.sh BuildGame -project=/project/FastNoise2Example.uproject
