@@ -8,11 +8,12 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        engine-version: [ dev-4.27, dev-5.0, dev-5.1, dev-5.2 ]
+#    strategy:
+#      matrix:
+#        engine-version: [ dev-4.27, dev-5.0, dev-5.1, dev-5.2 ]
     container:
-      image: ghcr.io/epicgames/unreal-engine:${{ matrix.engine-version }}
+      image: ghcr.io/epicgames/unreal-engine:dev-5.0
+#      image: ghcr.io/epicgames/unreal-engine:${{ matrix.engine-version }}
 
     steps:
       - name: Checkout UE4_FastNoise
