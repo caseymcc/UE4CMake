@@ -16,7 +16,7 @@ jobs:
 #      image: ghcr.io/epicgames/unreal-engine:${{ matrix.engine-version }}
       credentials:
         username: ${{ github.actor }}
-        password: ${{ secrets.github_token }}
+        password: ${{ secrets.READPACKAGES_TOKEN }}
 
     steps:
       - name: Checkout UE4_FastNoise
