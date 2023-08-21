@@ -368,7 +368,11 @@ public class CMakeTargetInst
         return generatorName;
     }
 
+#if UE_5_2_OR_LATER   // UE 5.2 and onwards
+    private string GetWindowsGeneratorOptions(WindowsCompiler compiler, UnrealArch architecture)
+#else
     private string GetWindowsGeneratorOptions(WindowsCompiler compiler, WindowsArchitecture architecture)
+#endif
     {
         string generatorOptions="";
 
@@ -378,16 +382,23 @@ public class CMakeTargetInst
 #endif//!UE_5_0_OR_LATER 
         )
         {
+#if UE_5_2_OR_LATER   // UE 5.2 and onwards
+            if(architecture == UnrealArch.X64)
+                generatorOptions="-A x64";
+            else if(architecture == UnrealArch.Arm64)
+                generatorOptions="-A ARM64";
+#elif UE_5_0_OR_LATER // UE 5.0 to 5.1
             if(architecture == WindowsArchitecture.x64)
                 generatorOptions="-A x64";
             else if(architecture == WindowsArchitecture.ARM64)
                 generatorOptions="-A ARM64";
-#if !UE_5_0_OR_LATER
+
+#else                 // Everything before UE 5.0
             else if(architecture == WindowsArchitecture.x86)
                 generatorOptions="-A Win32";
             else if(architecture == WindowsArchitecture.ARM32)
                 generatorOptions="-A ARM";
-#endif//!UE_5_0_OR_LATER
+#endif
         }
         return generatorOptions;
     }
