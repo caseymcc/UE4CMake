@@ -420,7 +420,7 @@ public class CMakeTargetInst
             name=GetWindowsGeneratorName(target.WindowsPlatform.Compiler);
             options=GetWindowsGeneratorOptions(target.WindowsPlatform.Compiler, target.WindowsPlatform.Architecture);
         }
-        else if(target.Platform == UnrealTargetPlatform.Linux)
+        else if(IsUnixPlatform(target.Platform))
         {
             name="Unix Makefiles";
             options="";
@@ -550,9 +550,9 @@ public class CMakeTargetInst
         File.WriteAllText(path, contents);
     }
 
-    private void generateLinuxToolchain(ReadOnlyTargetRules target, GeneratorInfo generatorInfo, string path, bool useSystemCompiler)
+    private void generateUnixToolchain(ReadOnlyTargetRules target, GeneratorInfo generatorInfo, string path, bool useSystemCompiler)
     {
-        string templateFilePath = Path.Combine(m_cmakeTargetPath, "toolchains/linux_toolchain.in");
+        string templateFilePath = Path.Combine(m_cmakeTargetPath, "toolchains/unix_toolchain.in");
         string contents = File.ReadAllText(templateFilePath);
 
         if(useSystemCompiler)
@@ -576,9 +576,9 @@ public class CMakeTargetInst
             generateWindowsToolchain(target, path);
             return true;
         }
-        else if(target.Platform == UnrealTargetPlatform.Linux)
+        else if(IsUnixPlatform(target.Platform))
         {
-            generateLinuxToolchain(target, generatorInfo, path, useSystemCompiler);
+            generateUnixToolchain(target, generatorInfo, path, useSystemCompiler);
             return true;
         }
         else
@@ -647,7 +647,7 @@ public class CMakeTargetInst
             cmd="cmd.exe";
             options="/c ";
         }
-        else if(BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Linux) 
+        else if(IsUnixPlatform(BuildHostPlatform.Current.Platform)) 
         {
             cmd="bash";
             options="-c ";
@@ -659,7 +659,7 @@ public class CMakeTargetInst
     {
         var cmdInfo=GetExecuteCommandSync();
 
-        if(BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Linux) 
+        if(IsUnixPlatform(BuildHostPlatform.Current.Platform)) 
         {
             command=" \""+command.Replace("\"", "\\\"")+" \"";
         }
@@ -689,6 +689,10 @@ public class CMakeTargetInst
              Console.WriteLine(outputString);
         }
         return p.ExitCode;
+    }
+
+    private bool IsUnixPlatform(UnrealTargetPlatform platform) {
+        return platform == UnrealTargetPlatform.Linux || platform == UnrealTargetPlatform.Mac;
     }
 }
 
