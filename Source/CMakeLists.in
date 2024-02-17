@@ -15,7 +15,7 @@ function(_ue4_get_target_link_libraries addTarget target_file_list target_linker
             get_target_property(target_libraries ${target} INTERFACE_LINK_LIBRARIES)
             get_target_property(target_link_libraries ${target} LINK_LIBRARIES)
             get_target_property(target_type ${target} TYPE)
-            
+
             if((CMAKE_CXX_COMPILER_ID STREQUAL "MSVC") AND (@FORCE_RELEASE_RUNTIME@))
                 if(NOT target_type STREQUAL "INTERFACE_LIBRARY")
                     set_property(TARGET ${target} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
@@ -25,8 +25,8 @@ function(_ue4_get_target_link_libraries addTarget target_file_list target_linker
                     endif()
                 endif()
             endif()
-            
-            if(target_libraries) 
+
+            if(target_libraries)
                 #get info for targets libs
                 _ue4_get_target_link_libraries(TRUE ${target_file_list} ${target_linker_file_list} ${target_directories} ${target_libraries})
             endif()
@@ -60,7 +60,7 @@ function(_ue4_get_target_link_libraries addTarget target_file_list target_linker
         set(${target_linker_file_list} ${${target_linker_file_list}} PARENT_SCOPE)
     endif()
 
-    
+
 endfunction()
 
 macro(ue4_get_target_link_libraries target_file_list target_linker_file_list target_directories)
@@ -68,7 +68,7 @@ macro(ue4_get_target_link_libraries target_file_list target_linker_file_list tar
 endmacro()
 
 macro(target_build_info build_info target)
-    list(APPEND target_includes $<TARGET_PROPERTY:${target},INCLUDE_DIRECTORIES>)
+    list(APPEND target_includes $<TARGET_PROPERTY:${target},PUBLIC_INCLUDE_DIRECTORIES>)
     list(APPEND target_includes $<TARGET_PROPERTY:${target},INTERFACE_INCLUDE_DIRECTORIES>)
     list(REMOVE_DUPLICATES target_includes)
 
@@ -76,7 +76,7 @@ macro(target_build_info build_info target)
     list(APPEND target_file_dependencies $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},CMAKE_CONFIGURE_DEPENDS>>)
 
     list(APPEND target_file_source_dependencies $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},SOURCES>>)
-    
+
     ue4_get_target_link_libraries(target_binary_libs target_link_lib_files target_binary_dirs ${target})
 
     string(REPLACE ";" "$<SEMICOLON>" target_includes "${target_includes}")
