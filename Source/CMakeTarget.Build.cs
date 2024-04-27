@@ -240,7 +240,6 @@ public class CMakeTargetInst
         switch(target.Configuration)
         {
             case UnrealTargetConfiguration.Debug:
-            case UnrealTargetConfiguration.DebugGame:
                 buildType="Debug";
                 break;
             default:
