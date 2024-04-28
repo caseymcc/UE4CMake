@@ -39,6 +39,15 @@ public class {YourProject}:ModuleRules
 - {cmake args} - any cmake arguments you want to provide to the target, some information is pulled from the unreal build system like, `BUILD_TYPE`, `INSTALL_PATH`, `CXX_COMPILER`, and etc... but you can still override them via this argument and set any options.
 - {bool, use system compiler} - optional linux only,  tells the build system to use the system compiler over the embbeded compiler in UE4/5. The embbeded compiler can be limited although it is relatively new clang version, for example even though it supports C++17 it does not include the std::filesystem library. Likely if you use this option your cmake library needs to be a shared object (.so) as static linking from a different compiler likely won't work.
 
+#### Including third-party headers
+For legacy reasons, Unreal Engine forces 4-byte packing on Win32. This can result in **hard-to-debug alignment issues** in classes that use 8-byte types such as doubles or longs. To restore the default packing around third-party code that defines 8-byte types in public structs, use the following macros:
+```cpp
+PRAGMA_PUSH_PLATFORM_DEFAULT_PACKING
+#include <thirdparty.h>
+PRAGMA_POP_PLATFORM_DEFAULT_PACKING
+```
+For more info, check the [Unreal Engine Docs](https://docs.unrealengine.com/4.27/en-US/ProductionPipelines/BuildTools/UnrealBuildTool/ThirdPartyLibraries/#defaultpackingandalignment)
+
 ## How it works
 
 When your project build files are generated, CMakeTarget will create a directory in the Intermediate directory under `Intermediate/CMakeTarget/{LibName}`. It will generate a `CMakeLists.txt` file that will link to then added library directory. It will then call cmake to generate the build files for that library under `build` in the same `Intermediate/CMakeTarget/{LibName}` directory. Once the cmake generation is complete it will then use cmake to build the library and will fetch the library's include directoryes and additonal libraries required for the target. It will then automatically add those to the `ModuleRules` variables `PublicIncludePaths` and `PublicAdditionalLibraries`. It will also add the cmake target's `CMakeLists.txt` file and source files to `ModuleRules.ExternalDependencies` so that changes to the cmake target or it's source will outdate the UE4/5 project which will force a re-build of the cmake target. If the cmake generation or build fails it will add a non existent file to the dependencies forcing the UE4/5 build system to run cmake again on the next build. Once the cmake completes successfully the non existent file will no longer be included.
