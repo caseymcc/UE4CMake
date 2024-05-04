@@ -357,9 +357,11 @@ public class CMakeTargetInst
             generatorName="Visual Studio 15 2017";
         break;
 #endif//!UE_5_0_OR_LATER
+#if !UE_5_4_OR_LATER
         case WindowsCompiler.VisualStudio2019:
             generatorName="Visual Studio 16 2019";
         break;
+#endif//!UE_5_4_OR_LATER
         case WindowsCompiler.VisualStudio2022:
             generatorName="Visual Studio 17 2022";
         break;
@@ -376,7 +378,10 @@ public class CMakeTargetInst
     {
         string generatorOptions="";
 
-        if((compiler == WindowsCompiler.VisualStudio2022) || (compiler == WindowsCompiler.VisualStudio2019)
+        if((compiler == WindowsCompiler.VisualStudio2022)
+#if !UE_5_4_OR_LATER
+            || (compiler == WindowsCompiler.VisualStudio2019)
+#endif//!UE_5_4_OR_LATER 
 #if !UE_5_0_OR_LATER
             || (compiler == WindowsCompiler.VisualStudio2017)
 #endif//!UE_5_0_OR_LATER 
