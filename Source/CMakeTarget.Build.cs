@@ -428,7 +428,7 @@ public class CMakeTargetInst
         {
             name="Unix Makefiles";
             options="";
-
+#nullable enable
             UEBuildPlatformSDK? buildSdk=UEBuildPlatformSDK.GetSDKForPlatform(target.Platform.ToString());
 
             if(buildSdk != null)
@@ -442,6 +442,7 @@ public class CMakeTargetInst
                     linkerPath=Path.Combine(internalSDKPath, "bin", "lld");
                 }
             }
+#nullable disable
         }
         else
         {
