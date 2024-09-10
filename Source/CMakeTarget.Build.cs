@@ -1,5 +1,5 @@
-
 using UnrealBuildTool;
+using UnrealBuildBase;
 using EpicGames.Core;
 using System;
 using System.Reflection;
@@ -7,7 +7,9 @@ using System.IO;
 using System.Diagnostics;
 using System.Text;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
 public static class DateTimeExtensions
 {
@@ -16,6 +18,18 @@ public static class DateTimeExtensions
         return dt1.Year == dt2.Year && dt1.Month == dt2.Month && dt1.Day == dt2.Day &&
                dt1.Hour == dt2.Hour && dt1.Minute == dt2.Minute && dt1.Second == dt2.Second;
     }   
+}
+
+public class LocalLogger : ILogger
+{
+    public IDisposable BeginScope<TState>(TState state) => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
+    {
+        Console.WriteLine(formatter(state, exception));
+    }
 }
 
 public class GeneratorInfo
@@ -123,6 +137,9 @@ public class CMakeTargetInst
 
             values.Add(tokens[0], tokens[1]);
         }
+
+        Console.WriteLine("******************************************");
+        Console.WriteLine("values: "+values);
 
         if(values.ContainsKey("cppStandard"))
         {
@@ -302,7 +319,7 @@ public class CMakeTargetInst
                 configCMake=false;
         }
 
-        if(configCMake)
+//        if(configCMake)
         {
             Console.WriteLine("Target "+m_targetName+" CMakeLists.txt out of date, rebuilding");
 
@@ -407,6 +424,210 @@ public class CMakeTargetInst
         return generatorOptions;
     }
 
+    private string getGeneratorOptions(ReadOnlyTargetRules target, ModuleRules rules)
+    {
+        string options = "";
+
+        try{
+            Type type_UEBuildPlatform = Utils.getBuildToolType("UEBuildPlatform");
+            Type type_UEBuildTarget = Utils.getBuildToolType("UEBuildTarget");
+            Type type_UEBuildModule = Utils.getBuildToolType("UEBuildModule");
+            Type type_UEBuildModuleCPP = Utils.getBuildToolType("UEBuildModuleCPP");
+  //          Type type_TargetDescriptor = Utils.getBuildToolType("TargetDescriptor");
+  //          Type type_BuildConfiguration = Utils.getBuildToolType("BuildConfiguration");
+            Type type_UEToolChain = Utils.getBuildToolType("UEToolChain");
+
+            MethodInfo method_GetBuildPlatform = Utils.getMethod(type_UEBuildPlatform, "GetBuildPlatform", BindingFlags.Public | BindingFlags.Static);
+//            MethodInfo method_BuildTarget_Create = Utils.getMethod(type_UEBuildTarget, "Create", BindingFlags.Public | BindingFlags.Static, new Type[] { type_TargetDescriptor, typeof(ILogger)});
+            MethodInfo method_GetCppConfiguration = Utils.getMethod(type_UEBuildTarget, "GetCppConfiguration", BindingFlags.Public | BindingFlags.Static);
+            MethodInfo method_SetupGlobalEnvironment = Utils.getMethod(type_UEBuildTarget, "SetupGlobalEnvironment", BindingFlags.Public | BindingFlags.Instance);
+
+            object buildPlatform = null;// = Activator.CreateInstance(type_UEBuildPlatform);
+            buildPlatform = method_GetBuildPlatform.Invoke(null, new object[] { target.Platform });
+
+//            method_BuildTarget_Create.Invoke(null, new object[] { target, null });
+            
+            Console.WriteLine("buildPlatform: " + buildPlatform);
+            if (buildPlatform == null)
+            {
+                Console.WriteLine("buildPlatform is null");
+                return options;
+            }
+
+            Console.WriteLine("BuildPlatform Type: " + buildPlatform.GetType().Name);
+
+            Type type_buildPlatform = buildPlatform.GetType();
+            MethodInfo method_CreateToolChain = Utils.getMethod(type_buildPlatform, "CreateToolChain", BindingFlags.Instance | BindingFlags.Public);
+
+            object toolChain = method_CreateToolChain.Invoke(buildPlatform, new object[] { target });
+
+            if(toolChain == null)
+            {
+                Console.WriteLine("toolChain is null");
+                return options;
+            }
+            Console.WriteLine("ToolChain Type: " + toolChain.GetType().Name);
+
+            Type type_ToolChain = toolChain.GetType();
+            Type type_CppConfiguration = Utils.getBuildToolType("CppConfiguration");
+
+            object cppConfiguration = method_GetCppConfiguration.Invoke(null, new object[] { target.Configuration });
+            
+            if(cppConfiguration == null)
+            {
+                Console.WriteLine("cppConfiguration is null");
+                return options;
+            }
+
+            Type type_CppCompileEnvironment = Utils.getBuildToolType("CppCompileEnvironment");
+            Type type_LinkEnvironment = Utils.getBuildToolType("LinkEnvironment");
+            Type type_SourceFileMetadataCache = Utils.getBuildToolType("SourceFileMetadataCache");
+
+            ConstructorInfo ctor_CppCompileEnvironment = Utils.getConstructor(type_CppCompileEnvironment, new Type[] { typeof(UnrealTargetPlatform), type_CppConfiguration, typeof(UnrealArchitectures), type_SourceFileMetadataCache });
+
+            object cppCompileEnvironment = ctor_CppCompileEnvironment.Invoke(new object[] { target.Platform, cppConfiguration, target.Architectures, null });
+
+            if(cppCompileEnvironment == null)
+            {
+                Console.WriteLine("cppCompileEnvironment is null");
+                return options;
+            }
+
+            List<string> arguments = new List<string>();
+
+            MethodInfo method_GetCompileArguments_Global = Utils.getMethod(type_ToolChain, "GetCompileArguments_Global", BindingFlags.Instance | BindingFlags.NonPublic);
+
+//            method_GetCompileArguments_Global.Invoke(toolChain, new object[] { cppCompileEnvironment, arguments });
+
+            ConstructorInfo ctor_UEBuildModuleCPP=Utils.getConstructor(type_UEBuildModuleCPP, new Type[] { typeof(ModuleRules), typeof(DirectoryReference), typeof(DirectoryReference), typeof(DirectoryReference), typeof(ILogger) });
+//            ConstructorInfo ctor_UEBuildModuleCPP=Utils.getConstructor(type_UEBuildModuleCPP);
+
+            PropertyInfo property_Directory = Utils.getProperty(rules.GetType(), "Directory", BindingFlags.Instance | BindingFlags.NonPublic);
+            DirectoryReference directory = (DirectoryReference)property_Directory.GetValue(rules);
+
+            if(directory == null)
+            {
+                Console.WriteLine("directory is null");
+                return options;
+            }
+
+            FieldInfo field_PrivateDependencyModules = Utils.getField(type_UEBuildModuleCPP, "PrivateDependencyModules");
+            FieldInfo field_PrivateIncludePathModules = Utils.getField(type_UEBuildModuleCPP, "PrivateIncludePathModules");
+            FieldInfo field_PublicDependencyModules = Utils.getField(type_UEBuildModuleCPP, "PublicDependencyModules");
+            FieldInfo field_PublicIncludePathModules = Utils.getField(type_UEBuildModuleCPP, "PublicIncludePathModules");
+
+            object ueBuildModuleCpp=ctor_UEBuildModuleCPP.Invoke(new object[] { rules, directory, 
+                directory, directory, rules.Logger });
+
+            if(ueBuildModuleCpp == null)
+            {
+                Console.WriteLine("ueBuildModuleCpp is null");
+                return options;
+            }
+
+            Type listOfUEBuildModule = typeof(List<>).MakeGenericType(type_UEBuildModule);
+
+            object privateDependencyModules = Activator.CreateInstance(listOfUEBuildModule);
+            object privateIncludePathModules = Activator.CreateInstance(listOfUEBuildModule);
+            object publicDependencyModules = Activator.CreateInstance(listOfUEBuildModule);
+            object publicIncludePathModules = Activator.CreateInstance(listOfUEBuildModule);
+
+            field_PrivateDependencyModules.SetValue(ueBuildModuleCpp, privateDependencyModules);
+            field_PrivateIncludePathModules.SetValue(ueBuildModuleCpp, privateIncludePathModules);
+            field_PublicDependencyModules.SetValue(ueBuildModuleCpp, publicDependencyModules);
+            field_PublicIncludePathModules.SetValue(ueBuildModuleCpp, publicIncludePathModules);
+
+            MethodInfo method_CreateModuleCompileEnvironment = Utils.getMethod(type_UEBuildModuleCPP, "CreateModuleCompileEnvironment", BindingFlags.Instance | BindingFlags.Public);
+
+            Utils.PrintObject(rules);
+//            Utils.PrintMethodInfo(method_CreateModuleCompileEnvironment);
+            Utils.PrintObject(cppCompileEnvironment);
+            Console.WriteLine("Testing: 3");
+            LocalLogger localLogger = new LocalLogger();
+            object moduleCompileEnvironment = method_CreateModuleCompileEnvironment.Invoke(ueBuildModuleCpp, new object[] { target, cppCompileEnvironment, rules.Logger });
+//            object moduleCompileEnvironment;
+//            method_CreateModuleCompileEnvironment.Invoke(ueBuildModuleCpp, new object[] { target, cppCompileEnvironment, localLogger});//rules.Logger });
+            if(moduleCompileEnvironment == null)
+            {
+                Console.WriteLine("moduleCompileEnvironment is null");
+                return options;
+            }
+
+            Utils.PrintObject(moduleCompileEnvironment);
+            Console.WriteLine("moduleCompileEnvironment Type: " + moduleCompileEnvironment.GetType().Name);
+            method_GetCompileArguments_Global.Invoke(toolChain, new object[] { moduleCompileEnvironment, arguments });
+
+            Type type_ClangToolChain = Utils.getBuildToolType("ClangToolChain");
+
+            if (type_ClangToolChain.IsAssignableFrom(toolChain.GetType()))
+            {
+                MethodInfo method_AddExtraToolArguments = Utils.getMethod(type_ClangToolChain, "AddExtraToolArguments", BindingFlags.Instance | BindingFlags.Public);
+                MethodInfo method_GetCppStandardCompileArgument = Utils.getMethod(type_ClangToolChain, "GetCppStandardCompileArgument", BindingFlags.Instance | BindingFlags.NonPublic);
+
+                method_AddExtraToolArguments.Invoke(toolChain, new object[] { arguments });
+                method_GetCppStandardCompileArgument.Invoke(toolChain, new object[] { moduleCompileEnvironment, arguments });
+            }
+//            ctor_UEBuildModuleCPP.Invoke(new object[] { rules, GetModuleIntermediateDirectory(RulesObject, Architectures), 
+//                GetModuleIntermediateDirectory(RulesObject, null), rules.Context.DefaultOutputBaseDir, rules.Logger });
+
+//            Type type_LinuxToolChain = Utils.getBuildToolType("LinuxToolChain");
+//            return new UEBuildModuleCPP(
+//							Rules: RulesObject,
+//							IntermediateDirectory: GetModuleIntermediateDirectory(RulesObject, Architectures),
+//							IntermediateDirectoryNoArch: GetModuleIntermediateDirectory(RulesObject, null),
+//							GeneratedCodeDirectory: RulesObject.Context.DefaultOutputBaseDir,
+//							Logger
+//						);
+
+//            HashSet<DirectoryReference> includePaths = (HashSet<DirectoryReference>)cppCompileEnvironment.GetType().GetField("ModuleInterfacePaths").GetValue(cppCompileEnvironment);
+//
+//            Console.WriteLine("includePaths: " + includePaths);
+//            foreach(DirectoryReference includePath in includePaths)
+//            {
+//                Console.WriteLine("include: " + includePath);
+//                arguments.Add("-I"+includePath);
+//            }
+
+            for (int i = 0; i < arguments.Count; i++)
+            {
+                string pattern = @"-isystem\s*""([^""]+)""";
+                arguments[i] = System.Text.RegularExpressions.Regex.Replace(arguments[i], pattern, m =>
+                {
+                    string path = m.Groups[1].Value;
+                    if (!Path.IsPathRooted(path))
+                    {
+                        path = $"{Unreal.EngineSourceDirectory}/{path}";
+                    }
+                    return $"-isystem\"{path}\"";
+                });
+
+                string sys_pattern = @"--sysroot=\s*""([^""]+)""";
+                arguments[i] = System.Text.RegularExpressions.Regex.Replace(arguments[i], sys_pattern, m =>
+                {
+                    return $"--sysroot=\"{Unreal.EngineSourceDirectory}/{m.Groups[1].Value}\"";
+                });
+
+                Console.WriteLine("argument: " + arguments[i]);
+
+            }
+
+            if(arguments.Count > 0)
+            {
+//                var escapedArguments = arguments.Select(s => Utils.escapeForCMake(s));
+                arguments = arguments.Where(s => !s.Contains("(")).ToList();
+                options = "-DCMAKE_CXX_FLAGS=\""+string.Join(" ", arguments)+"\" ";
+            }
+        
+        }
+        catch(Exception e)
+        {
+            Utils.PrintExceptionDetails(e);
+//            Console.WriteLine("Exception: "+e.Message);
+        }
+
+        return options;
+    }
+
     GeneratorInfo GetGeneratorInfo(ReadOnlyTargetRules target, ModuleRules rules)
     {
         string name;
@@ -448,6 +669,7 @@ public class CMakeTargetInst
             name="";
             options="";
         }
+        options+=getGeneratorOptions(target, rules);
 
         return new GeneratorInfo(name, options, cCompilerPath, cppCompilerPath, linkerPath);
     }
@@ -480,7 +702,6 @@ public class CMakeTargetInst
         {
             options=" -T host=x64";
         }
-        
 
         var generatorInfo=GetGeneratorInfo(target, rules);
 
@@ -595,6 +816,14 @@ public class CMakeTargetInst
         return false;
     }
 
+    private void getToolchain(ReadOnlyTargetRules target)
+    {
+        var platformField = typeof(ReadOnlyTargetRules).GetField("Platform", BindingFlags.Instance | BindingFlags.NonPublic);
+        var platform = platformField.GetValue(target);
+        var toolchainField = platform.GetType().GetField("ToolChain", BindingFlags.Instance | BindingFlags.NonPublic);
+        var toolchain = toolchainField.GetValue(platform);
+    }
+
     private bool generateCMakeFile(ReadOnlyTargetRules target, string path, string buildType)
     {
         string templateFilePath = Path.Combine(m_cmakeTargetPath, "CMakeLists.in");
@@ -621,6 +850,43 @@ public class CMakeTargetInst
         contents=contents.Replace("@BUILD_TARGET_DIR@", m_targetPath.Replace("\\", "/"));
         contents=contents.Replace("@BUILD_TARGET_THIRDPARTY_DIR@", m_thirdPartyGeneratedPath.Replace("\\", "/"));
         contents=contents.Replace("@BUILD_TARGET_BUILD_DIR@", buildDir.Replace("\\", "/"));
+
+        Console.WriteLine("target.Platform Type: " + target.Platform.GetType().Name);
+
+
+        var cmakeOptions = new StringBuilder();
+
+//        if (toolchain is LinuxToolChain linuxToolChain)
+//        {
+//            // Use reflection to get private members of LinuxToolChain
+//            var flags = GetPrivateFieldValue<string>(linuxToolChain, "CompileFlags");
+//            var defines = GetPrivateFieldValue<List<string>>(linuxToolChain, "CompileDefines");
+//
+//            cmakeOptions.AppendLine("set(CMAKE_C_FLAGS \"${CMAKE_C_FLAGS} " + flags + "\")");
+//            cmakeOptions.AppendLine("set(CMAKE_CXX_FLAGS \"${CMAKE_CXX_FLAGS} " + flags + "\")");
+//
+//            foreach (var define in defines)
+//            {
+//                cmakeOptions.AppendLine($"add_definitions(-D{define})");
+//            }
+//        }
+//        else if (toolchain is ClangToolChain clangToolChain)
+//        {
+//            // Use reflection to get private members of ClangToolChain
+//            var flags = GetPrivateFieldValue<string>(clangToolChain, "CompileFlags");
+//            var defines = GetPrivateFieldValue<List<string>>(clangToolChain, "CompileDefines");
+//
+//            cmakeOptions.AppendLine("set(CMAKE_C_FLAGS \"${CMAKE_C_FLAGS} " + flags + "\")");
+//            cmakeOptions.AppendLine("set(CMAKE_CXX_FLAGS \"${CMAKE_CXX_FLAGS} " + flags + "\")");
+//
+//            foreach (var define in defines)
+//            {
+//                cmakeOptions.AppendLine($"add_definitions(-D{define})");
+//            }
+//        }
+
+        // Add the generated CMake options to the content
+        contents += "\n# Generated CMake options\n" + cmakeOptions.ToString();
 
         File.WriteAllText(cmakeFile, contents);
 
@@ -698,6 +964,13 @@ public class CMakeTargetInst
     private bool IsUnixPlatform(UnrealTargetPlatform platform) {
         return platform == UnrealTargetPlatform.Linux || platform == UnrealTargetPlatform.Mac;
     }
+
+    // Helper method to get private field value using reflection
+    private static T GetPrivateFieldValue<T>(object obj, string fieldName)
+    {
+        var field = obj.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        return (T)field.GetValue(obj);
+    }
 }
 
 public class CMakeTarget : ModuleRules
@@ -728,5 +1001,177 @@ public class CMakeTarget : ModuleRules
         }
 
         return true;
+    }
+}
+
+class Utils
+{
+    public static Type getBuildToolType(string typeName)
+    {
+        Type type = Type.GetType("UnrealBuildTool."+typeName+", UnrealBuildTool");
+
+        if(type == null)
+        {
+            throw new Exception("Type not found: "+typeName);
+        }
+
+        return type;
+    }
+
+    public static ConstructorInfo getConstructor(Type type, Type[] types)
+    {
+        ConstructorInfo ctor=type.GetConstructor(types);
+
+        if(ctor == null)
+        {
+            throw new Exception("Constructor not found: "+type.Name);
+        }
+
+        return ctor;
+    }
+    
+    public static MethodInfo getMethod(Type type, string methodName, BindingFlags flags)
+    {
+        MethodInfo method=type.GetMethod(methodName, flags);
+
+        if(method == null)
+        {
+            throw new Exception("Method not found: "+type.Name+"."+methodName);
+        }
+
+        return method;
+    }
+
+    public static MethodInfo getMethod(Type type, string methodName, BindingFlags flags, Type[] types  = null)
+    {
+        MethodInfo method;
+
+        if (types == null || types.Length == 0)
+        {
+            method=type.GetMethod(methodName, flags);
+        }
+        else
+        {
+            method=type.GetMethod(methodName, flags, null, types, null);
+        }
+
+        if(method == null)
+        {
+            throw new Exception("Method not found: "+type.Name+"."+methodName);
+        }
+
+        return method;
+    }
+
+    public static FieldInfo getField(Type type, string fieldName, BindingFlags flags = BindingFlags.Instance | BindingFlags.Public)
+    {
+        FieldInfo field=type.GetField(fieldName, flags);
+
+        if(field == null)
+        {
+            throw new Exception("Field not found: "+type.Name+"."+fieldName);
+        }
+
+        return field;
+    }
+
+    public static PropertyInfo getProperty(Type type, string propertyName, BindingFlags flags = BindingFlags.Instance | BindingFlags.Public)
+    {
+        PropertyInfo property=type.GetProperty(propertyName, flags);
+
+        if(property == null)
+        {
+            throw new Exception("Property not found: "+type.Name+"."+propertyName);
+        }
+
+        return property;
+    }
+
+    public static string escapeForCMake(string input)
+    {
+        // Escape backslashes and double quotes
+        string escaped = input.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+        // If the string contains spaces or other special characters, enclose it in quotes
+        if (escaped.Contains(" ") || escaped.Contains("\"") || escaped.Contains("\\"))
+        {
+            return "\"" + escaped + "\"";
+        }
+
+        return escaped;
+    }
+
+    public static void PrintExceptionDetails(Exception ex)
+    {
+        Console.WriteLine("Exception Type: " + ex.GetType().FullName);
+        Console.WriteLine("Message: " + ex.Message);
+        Console.WriteLine("Source: " + ex.Source);
+        Console.WriteLine("Stack Trace: " + ex.StackTrace);
+
+        // If there is an inner exception, print details of that as well
+        if (ex.InnerException != null)
+        {
+            Console.WriteLine("Inner Exception:");
+            PrintExceptionDetails(ex.InnerException);
+        }
+    }
+
+    public static void PrintMethodInfo(MethodInfo methodInfo)
+    {
+        if (methodInfo == null)
+        {
+            Console.WriteLine("MethodInfo is null");
+            return;
+        }
+
+        Console.WriteLine("Method Name: " + methodInfo.Name);
+        Console.WriteLine("Return Type: " + methodInfo.ReturnType);
+        Console.WriteLine("Declaring Type: " + methodInfo.DeclaringType);
+
+        ParameterInfo[] parameters = methodInfo.GetParameters();
+        Console.WriteLine("Parameters:");
+        foreach (ParameterInfo param in parameters)
+        {
+            Console.WriteLine(" - " + param.Name + " : " + param.ParameterType);
+        }
+    }
+    public static void PrintObject(object printObject)
+    {
+        Type type = printObject.GetType();
+
+        Console.WriteLine("****************************************************************");
+        Console.WriteLine("Class: " + type.FullName);
+
+        // Output public and non-public properties
+        PropertyInfo[] properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        Console.WriteLine("Properties:");
+        foreach (var property in properties)
+        {
+            try
+            {
+                var value = property.GetValue(printObject);
+                Console.WriteLine($"{property.Name}: {value}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"{property.Name}: Unable to retrieve value ({ex.Message})");
+            }
+        }
+
+        // Output public and non-public fields
+        FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        Console.WriteLine("Fields:");
+        foreach (var field in fields)
+        {
+            try
+            {
+                var value = field.GetValue(printObject);
+                Console.WriteLine($"{field.Name}: {value}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"{field.Name}: Unable to retrieve value ({ex.Message})");
+            }
+        }
     }
 }
