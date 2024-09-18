@@ -50,6 +50,7 @@ public class CMakeTargetInst
     private string m_cmakeTargetPath;
     private string m_modulePath;
     private string m_targetName;
+    private string m_targetPlatform;
     private string m_targetLocation;
     private string m_targetPath;
     private string m_cmakeArgs;
@@ -71,9 +72,10 @@ public class CMakeTargetInst
     private bool m_includedToolchain=false;
     private string m_includedToolchainPath;
 
-    public CMakeTargetInst(string targetName, string targetLocation, string args)
+    public CMakeTargetInst(string targetName, string targetPlatform, string targetLocation, string args)
     {
         m_targetName=targetName;
+        m_targetPlatform=targetPlatform;
         m_targetLocation=targetLocation;
 
         Regex buildTypeRegex=new Regex(@"-DCMAKE_BUILD_TYPE=(\w*)");
@@ -262,8 +264,8 @@ public class CMakeTargetInst
         m_targetPath=Path.Combine(m_modulePath, m_targetLocation);
 
         m_thirdPartyGeneratedPath=Path.Combine(rules.Target.ProjectFile.Directory.FullName, "Intermediate", "CMakeTarget");
-        m_generatedTargetPath=Path.Combine(m_thirdPartyGeneratedPath, m_targetName);
-        m_buildDirectory="build";
+        m_generatedTargetPath=Path.Combine(m_thirdPartyGeneratedPath, m_targetName, m_targetPlatform);
+        m_buildDirectory = "build";
         m_buildPath=Path.Combine(m_generatedTargetPath, m_buildDirectory);
 
         m_buildInfoFile="buildinfo_"+buildType+".output";
@@ -599,7 +601,7 @@ public class CMakeTargetInst
     {
         string templateFilePath = Path.Combine(m_cmakeTargetPath, "CMakeLists.in");
         string cmakeFile = Path.Combine(m_generatedTargetPath, "CMakeLists.txt");
-        const string buildDir = "build";//just one for visual studio generator
+        string buildDir = Path.Combine(m_targetPlatform, "build");//just one for visual studio generator
 
         string contents = File.ReadAllText(templateFilePath);
 
@@ -711,7 +713,7 @@ public class CMakeTarget : ModuleRules
     public static bool add(ReadOnlyTargetRules target, ModuleRules rules, string targetName, string targetLocation, string args, bool useSystemCompiler=false)
     {
         Console.WriteLine("CMakeTarget load target: "+targetName+" loc:"+targetLocation);
-        CMakeTargetInst cmakeTarget = new CMakeTargetInst(targetName, targetLocation, args);
+        CMakeTargetInst cmakeTarget = new CMakeTargetInst(targetName, target.Platform.ToString(), targetLocation, args);
 
         if(!cmakeTarget.Load(target, rules, useSystemCompiler))
         {
