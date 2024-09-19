@@ -429,18 +429,26 @@ public class CMakeTargetInst
             name="Unix Makefiles";
             options="";
 
-            UEBuildPlatformSDK? buildSdk=UEBuildPlatformSDK.GetSDKForPlatform(target.Platform.ToString());
-
-            if(buildSdk != null)
+            if( BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win64 )
             {
-                string? internalSDKPath = buildSdk.GetInternalSDKPath();
+            	// We are on windows Cross Compiling Linux, Fetch the Linux tool chain.
+            	UEBuildPlatformSDK? buildSdk=UEBuildPlatformSDK.GetSDKForPlatform(target.Platform.ToString());
 
-                if(!string.IsNullOrEmpty(internalSDKPath))
-                {
-                    cCompilerPath=Path.Combine(internalSDKPath, "bin", "clang");
-                    cppCompilerPath=Path.Combine(internalSDKPath, "bin", "clang++");
-                    linkerPath=Path.Combine(internalSDKPath, "bin", "lld");
-                }
+            	if(buildSdk != null)
+            	{
+            	    string? internalSDKPath = buildSdk.GetInternalSDKPath();
+
+		    if(!string.IsNullOrEmpty(internalSDKPath))
+		    {
+		        cCompilerPath=Path.Combine(internalSDKPath, "bin", "clang");
+		        cppCompilerPath=Path.Combine(internalSDKPath, "bin", "clang++");
+		        linkerPath=Path.Combine(internalSDKPath, "bin", "lld");
+		    }
+		}
+            }
+            else
+            {
+            	// We are on Linux compiling Linux, nothing else to do.
             }
         }
         else
@@ -472,9 +480,9 @@ public class CMakeTargetInst
         string program = GetCMakeExe();
         string options = "";
 
-        if((BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win64) 
+        if((target.Platform == UnrealTargetPlatform.Win64) 
 #if !UE_5_0_OR_LATER
-            || (BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win32)
+            || (target.Platform == UnrealTargetPlatform.Win32)
 #endif//!UE_5_0_OR_LATER
             )
         {
