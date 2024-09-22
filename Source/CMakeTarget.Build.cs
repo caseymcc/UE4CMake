@@ -1,5 +1,6 @@
 
 using UnrealBuildTool;
+using UnrealBuildBase;
 using EpicGames.Core;
 using System;
 using System.Reflection;
@@ -437,20 +438,47 @@ public class CMakeTargetInst
         {
             name="Unix Makefiles";
             options="";
+            // This name comes from the Linux compiler used by unreal to compile on linux and cross-compile from windows.
+            arch_name="x86_64-unknown-linux-gnu";
 
             UEBuildPlatformSDK? buildSdk=UEBuildPlatformSDK.GetSDKForPlatform(target.Platform.ToString());
 
             if(buildSdk != null)
             {
                 string? internalSDKPath = buildSdk.GetInternalSDKPath();
-
+                if (string.IsNullOrEmpty(internalSDKPath))
+                {
+                    string linuxMultiarchRoot = Environment.GetEnvironmentVariable("LINUX_MULTIARCH_ROOT");
+                    if (!string.IsNullOrEmpty(linuxMultiarchRoot))
+                    {
+                        internalSDKPath = Path.Combine(linuxMultiarchRoot, arch_name);
+                    }
+                }
+                
                 if(!string.IsNullOrEmpty(internalSDKPath))
                 {
                     cCompilerPath=Path.Combine(internalSDKPath, "bin", "clang");
                     cppCompilerPath=Path.Combine(internalSDKPath, "bin", "clang++");
-                    linkerPath=Path.Combine(internalSDKPath, "bin", "lld");
-                    // This name comes from the Linux compiler used by unreal to compile on linux and cross-compile from windows.
-                    arch_name="x86_64-unknown-linux-gnu";
+                    linkerPath=Path.Combine(internalSDKPath, "bin", "lld"); 
+                    
+                    // When cross compiling from Windows ensure to add .exe to the path.
+                    if((BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win64) 
+#if !UE_5_0_OR_LATER
+                        || (BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win32)
+#endif//!UE_5_0_OR_LATER
+                    )
+                    {
+                        cCompilerPath += ".exe";
+                        cppCompilerPath += ".exe";
+                        linkerPath += ".exe";
+                    }
+                }
+                else
+                {
+                    // The Linux Toolchain is nost installed, abort the compilation.
+                    // NOTE: Not using the provided Linux toolchain is not supported in unreal nor by this library.
+                    Console.WriteLine("[FATAL] The Linux Toolchain is not installed. Please install it and ensure the `LINUX_MULTIARCH_ROOT` environment variable is correctly set. Usually the Toolchain installer does it automatically.");
+                    Environment.Exit(1);
                 }
             }
         }
@@ -483,15 +511,14 @@ public class CMakeTargetInst
         string program = GetCMakeExe();
         string options = "";
 
-        if((BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win64) 
+        if((target.Platform == UnrealTargetPlatform.Win64) 
 #if !UE_5_0_OR_LATER
-            || (BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win32)
+            || (target.Platform == UnrealTargetPlatform.Win32)
 #endif//!UE_5_0_OR_LATER
             )
         {
             options=" -T host=x64";
         }
-        
 
         var generatorInfo=GetGeneratorInfo(target, rules);
 
@@ -575,17 +602,17 @@ public class CMakeTargetInst
         else
             contents=contents.Replace("@USE_COMPILER@", "1");
 
-		contents = contents.Replace("@COMPILER@", generatorInfo.m_cCompiler);
-		contents = contents.Replace("@CPPCOMPILER@", generatorInfo.m_cppCompiler);
-		contents = contents.Replace("@LINKER@", generatorInfo.m_linker);
+		contents = contents.Replace("@COMPILER@", generatorInfo.m_cCompiler.Replace("\\", "/"));
+		contents = contents.Replace("@CPPCOMPILER@", generatorInfo.m_cppCompiler.Replace("\\", "/"));
+		contents = contents.Replace("@LINKER@", generatorInfo.m_linker.Replace("\\", "/"));
 		contents = contents.Replace("@ARCH_NAME@", generatorInfo.m_archName);
 
 		// This is an essential piece of the UBT toolchain: It links the c++ standard library provided by unreal.
 		// This piece of code was reverse-engineered from: https://github.com/EpicGames/UnrealEngine/blob/5.4.4-release/Engine/Source/ThirdParty/Alembic/BuildForLinux.sh#L82-L83
 		// Notice -fvisibility=default is necessary to ensure the linking doesn't miss any object.
 		contents = contents.Replace("@C_FLAGS@", "");
-		contents = contents.Replace("@CXX_FLAGS@", " -fvisibility=default -I"+m_engineDirectory+"/Source/ThirdParty/Unix/LibCxx/include/c++/v1");
-		contents = contents.Replace("@LINKER_FLAGS@", "-nodefaultlibs -L"+m_engineDirectory+"/Source/ThirdParty/Unix/LibCxx/lib/Unix/"+generatorInfo.m_archName+"/");
+		contents = contents.Replace("@CXX_FLAGS@", " -fvisibility=default -I"+m_engineDirectory.Replace("\\", "/")+"/Source/ThirdParty/Unix/LibCxx/include/c++/v1");
+		contents = contents.Replace("@LINKER_FLAGS@", "-nodefaultlibs -L"+m_engineDirectory.Replace("\\", "/")+"/Source/ThirdParty/Unix/LibCxx/lib/Unix/"+generatorInfo.m_archName+"/");
         
         addIncludedToolchain(ref contents);
 
