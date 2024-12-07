@@ -85,6 +85,11 @@ macro(target_build_info build_info target)
 
     list(APPEND target_file_source_dependencies $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},SOURCES>>)
 
+    # Extract compile definitions
+    list(APPEND target_defines $<TARGET_PROPERTY:${target},INTERFACE_COMPILE_DEFINITIONS>)
+    list(APPEND target_defines $<TARGET_PROPERTY:${target},PUBLIC_COMPILE_DEFINITIONS>)
+    list(REMOVE_DUPLICATES target_defines)
+
     # Store dependent targets
     ue4_get_target_link_libraries(target_binary_libs target_link_lib_files target_binary_dirs target_dependencies ${target})
 
@@ -102,6 +107,7 @@ macro(target_build_info build_info target)
     string(REPLACE ";" "$<SEMICOLON>" target_binary_libs "${target_binary_libs}")
     string(REPLACE ";" "$<SEMICOLON>" target_binary_dirs "${target_binary_dirs}")
     string(REPLACE ";" "$<SEMICOLON>" target_link_lib_files "${target_link_lib_files}")
+    string(REPLACE ";" "$<SEMICOLON>" target_defines "${target_defines}")
 
     list(APPEND ${build_info} "cppStandard=$<TARGET_PROPERTY:${target},CXX_STANDARD>")
     list(APPEND ${build_info} "includes=$<JOIN:$<REMOVE_DUPLICATES:${target_includes}>,$<COMMA>>")
@@ -111,6 +117,7 @@ macro(target_build_info build_info target)
     list(APPEND ${build_info} "binaries=$<JOIN:$<REMOVE_DUPLICATES:${target_binary_libs}>,$<COMMA>>")
     list(APPEND ${build_info} "binaryDirectories=$<JOIN:${target_binary_dirs},$<COMMA>>")
     list(APPEND ${build_info} "libraries=$<JOIN:$<REMOVE_DUPLICATES:${target_link_lib_files}>,$<COMMA>>")
+    list(APPEND ${build_info} "defines=$<JOIN:$<REMOVE_DUPLICATES:${target_defines}>,$<COMMA>>")
 endmacro()
 
 cmake_policy(SET CMP0091 NEW)

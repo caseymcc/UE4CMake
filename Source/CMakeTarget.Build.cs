@@ -228,6 +228,19 @@ public class CMakeTargetInst
             }
         }
 
+        if(values.ContainsKey("defines"))
+        {
+            string[] defines = values["defines"].Split(',');
+
+            foreach(string define in defines)
+            {
+                if(String.IsNullOrEmpty(define))
+                    continue;
+
+                rules.PublicDefinitions.Add(define);
+            }
+        }
+
         return true;
     }
 
