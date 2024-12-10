@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-#using undocumented cmake functionality to force global on imported targets
+# Using undocumented cmake functionality to force global on imported targets
 function(add_library)
     set(_args ${ARGN})
     if ("${_args}" MATCHES ";IMPORTED")
@@ -9,11 +9,14 @@ function(add_library)
     _add_library(${_args})
 endfunction()
 
-function(_ue4_get_target_link_libraries addTarget target_file_list target_linker_file_list target_directories)
+function(_ue4_get_target_link_libraries addTarget target_file_list target_linker_file_list target_directories target_dependencies_list)
     foreach(target ${ARGN})
         if(TARGET ${target})
-            get_target_property(target_libraries ${target} INTERFACE_LINK_LIBRARIES)
-            get_target_property(target_link_libraries ${target} LINK_LIBRARIES)
+            # Add this target to our dependencies list
+            list(APPEND ${target_dependencies_list} ${target})
+
+            get_target_property(interface_libs ${target} INTERFACE_LINK_LIBRARIES)
+            get_target_property(link_libs ${target} LINK_LIBRARIES)
             get_target_property(target_type ${target} TYPE)
 
             if((CMAKE_CXX_COMPILER_ID STREQUAL "MSVC") AND (@FORCE_RELEASE_RUNTIME@))
@@ -26,9 +29,13 @@ function(_ue4_get_target_link_libraries addTarget target_file_list target_linker
                 endif()
             endif()
 
-            if(target_libraries)
-                #get info for targets libs
-                _ue4_get_target_link_libraries(TRUE ${target_file_list} ${target_linker_file_list} ${target_directories} ${target_libraries})
+            # Recursively process interface_libs
+            if(interface_libs)
+                _ue4_get_target_link_libraries(TRUE ${target_file_list} ${target_linker_file_list} ${target_directories} ${target_dependencies_list} ${interface_libs})
+            endif()
+            # Recursively process link_libs
+            if(link_libs)
+                _ue4_get_target_link_libraries(TRUE ${target_file_list} ${target_linker_file_list} ${target_directories} ${target_dependencies_list} ${link_libs})
             endif()
 
             if(${addTarget})
@@ -39,11 +46,10 @@ function(_ue4_get_target_link_libraries addTarget target_file_list target_linker
                 if(target_type STREQUAL "STATIC_LIBRARY"
                     OR target_type STREQUAL "SHARED_LIBRARY")
                     list(APPEND ${target_linker_file_list} "$<TARGET_LINKER_FILE:${target}>")
-                endif ()
+                endif()
             endif()
         else()
-            #not a target, need to hunt for library to include
-            #currently ignored, use targets instead of files
+            # Not a target, currently ignored
         endif()
     endforeach()
 
@@ -59,12 +65,14 @@ function(_ue4_get_target_link_libraries addTarget target_file_list target_linker
         list(REMOVE_DUPLICATES ${target_linker_file_list})
         set(${target_linker_file_list} ${${target_linker_file_list}} PARENT_SCOPE)
     endif()
-
-
+    if(${target_dependencies_list})
+        list(REMOVE_DUPLICATES ${target_dependencies_list})
+        set(${target_dependencies_list} ${${target_dependencies_list}} PARENT_SCOPE)
+    endif()
 endfunction()
 
-macro(ue4_get_target_link_libraries target_file_list target_linker_file_list target_directories)
-    _ue4_get_target_link_libraries(TRUE ${target_file_list} ${target_linker_file_list} ${target_directories} ${ARGN})
+macro(ue4_get_target_link_libraries target_file_list target_linker_file_list target_directories target_dependencies_list)
+    _ue4_get_target_link_libraries(TRUE ${target_file_list} ${target_linker_file_list} ${target_directories} ${target_dependencies_list} ${ARGN})
 endmacro()
 
 macro(target_build_info build_info target)
@@ -77,7 +85,21 @@ macro(target_build_info build_info target)
 
     list(APPEND target_file_source_dependencies $<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${target},SOURCES>>)
 
-    ue4_get_target_link_libraries(target_binary_libs target_link_lib_files target_binary_dirs ${target})
+    # Extract compile definitions
+    list(APPEND target_defines $<TARGET_PROPERTY:${target},INTERFACE_COMPILE_DEFINITIONS>)
+    list(APPEND target_defines $<TARGET_PROPERTY:${target},PUBLIC_COMPILE_DEFINITIONS>)
+    list(REMOVE_DUPLICATES target_defines)
+
+    # Store dependent targets
+    ue4_get_target_link_libraries(target_binary_libs target_link_lib_files target_binary_dirs target_dependencies ${target})
+
+    # For each dependent target, get its sources and add them to source_dependencies
+    foreach(dep ${target_dependencies})
+        get_target_property(dep_sources ${dep} SOURCES)
+        if(dep_sources)
+            list(APPEND target_file_source_dependencies ${dep_sources})
+        endif()
+    endforeach()
 
     string(REPLACE ";" "$<SEMICOLON>" target_includes "${target_includes}")
     string(REPLACE ";" "$<SEMICOLON>" target_file_dependencies "${target_file_dependencies}")
@@ -85,6 +107,7 @@ macro(target_build_info build_info target)
     string(REPLACE ";" "$<SEMICOLON>" target_binary_libs "${target_binary_libs}")
     string(REPLACE ";" "$<SEMICOLON>" target_binary_dirs "${target_binary_dirs}")
     string(REPLACE ";" "$<SEMICOLON>" target_link_lib_files "${target_link_lib_files}")
+    string(REPLACE ";" "$<SEMICOLON>" target_defines "${target_defines}")
 
     list(APPEND ${build_info} "cppStandard=$<TARGET_PROPERTY:${target},CXX_STANDARD>")
     list(APPEND ${build_info} "includes=$<JOIN:$<REMOVE_DUPLICATES:${target_includes}>,$<COMMA>>")
@@ -94,6 +117,7 @@ macro(target_build_info build_info target)
     list(APPEND ${build_info} "binaries=$<JOIN:$<REMOVE_DUPLICATES:${target_binary_libs}>,$<COMMA>>")
     list(APPEND ${build_info} "binaryDirectories=$<JOIN:${target_binary_dirs},$<COMMA>>")
     list(APPEND ${build_info} "libraries=$<JOIN:$<REMOVE_DUPLICATES:${target_link_lib_files}>,$<COMMA>>")
+    list(APPEND ${build_info} "defines=$<JOIN:$<REMOVE_DUPLICATES:${target_defines}>,$<COMMA>>")
 endmacro()
 
 cmake_policy(SET CMP0091 NEW)

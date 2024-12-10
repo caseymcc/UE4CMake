@@ -123,14 +123,20 @@ public class CMakeTargetInst
         StreamReader reader = new System.IO.StreamReader(m_buildInfoPath);
         string line = null;
 
-        while((line=reader.ReadLine())!=null)
+        while ((line = reader.ReadLine()) != null)
         {
-            string[] tokens = line.Split('=');
+            int separatorIndex = line.IndexOf('=');
 
-            if(tokens.Length!=2)
+            // Skip lines that don't have an '='
+            if (separatorIndex == -1)
                 continue;
 
-            values.Add(tokens[0], tokens[1]);
+            // Extract the token (key) and value
+            string key = line.Substring(0, separatorIndex).Trim();
+            string value = line.Substring(separatorIndex + 1).Trim();
+
+            // Add to the dictionary
+            values.Add(key, value);
         }
 
         if(values.ContainsKey("cppStandard"))
@@ -198,6 +204,7 @@ public class CMakeTargetInst
                     continue;
 
                 rules.PublicIncludePaths.Add(include);
+                Console.WriteLine("PublicIncludePaths.Add("+include+")");
             }
         }
 
@@ -210,8 +217,8 @@ public class CMakeTargetInst
                 if(String.IsNullOrEmpty(binaryDirectory))
                     continue;
 
-                Console.WriteLine("Add library path: "+binaryDirectory);
                 rules.PublicRuntimeLibraryPaths.Add(binaryDirectory);
+                Console.WriteLine("PublicRuntimeLibraryPaths.Add("+binaryDirectory+")");
             }
         }
 
@@ -225,9 +232,25 @@ public class CMakeTargetInst
                     continue;
 
                 rules.PublicAdditionalLibraries.Add(library);
+                Console.WriteLine("PublicAdditionalLibraries.Add("+library+")");
             }
         }
 
+        if(values.ContainsKey("defines"))
+        {
+            string[] defines = values["defines"].Split(',');
+
+            foreach(string define in defines)
+            {
+                if(String.IsNullOrEmpty(define))
+                    continue;
+
+                rules.PublicDefinitions.Add(define);
+                Console.WriteLine("PublicDefinitions.Add("+define+")");
+            }
+        }
+
+        Console.WriteLine("Loading done.");
         return true;
     }
 
