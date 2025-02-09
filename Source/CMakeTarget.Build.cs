@@ -8,6 +8,7 @@ using System.IO;
 using System.Diagnostics;
 using System.Text;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 public static class DateTimeExtensions
@@ -318,23 +319,79 @@ public class CMakeTargetInst
 
     private bool Build(ReadOnlyTargetRules target, ModuleRules rules, string buildType, bool useSystemCompiler)
     {
-        string builtFile = Path.Combine(m_generatedTargetPath, buildType+".built");
         string projectCMakeLists=Path.GetFullPath(Path.Combine(m_targetPath, "CMakeLists.txt"));
+        
+        string builtFile = Path.Combine(m_generatedTargetPath, buildType+".built");
 
-        bool configCMake=true;
-
-        //check if already built and CMakeList.txt not changed
+        JsonObject builtJsonObject;
+        
         if(File.Exists(builtFile))
         {
-            DateTime cmakeLastWrite=File.GetLastWriteTime(projectCMakeLists);
-            string builtTimeString=System.IO.File.ReadAllText(builtFile);
-            DateTime builtTime=DateTime.Parse(builtTimeString);
-
-            if(builtTime.EqualsUpToSeconds(cmakeLastWrite))
-                configCMake=false;
+            try
+            {
+                builtJsonObject=JsonObject.Parse(File.ReadAllText(builtFile));
+            }
+            catch(Exception e)
+            {
+                Console.WriteLine(e);
+                builtJsonObject = new JsonObject();
+            }
         }
+        else
+        {
+            builtJsonObject = new JsonObject();
+        }
+        
+        bool needConfig = false;
 
-        if(configCMake)
+        string[] buildFiles = Directory.GetFiles(rules.ModuleDirectory, "*.Build.cs", SearchOption.TopDirectoryOnly);
+        if(buildFiles.Length == 0)
+        {
+            Console.WriteLine("CMakeTarget: Warning: No build files found in module directory: "+rules.ModuleDirectory);
+        }
+        else
+        {
+            foreach(string file in buildFiles)
+            {
+                DateTime buildFileLastWrite = File.GetLastWriteTime(file);
+
+                var fileName = Path.GetFileName(file);
+                if(builtJsonObject.ContainsField(fileName))
+                {
+                    string builtTimeString = builtJsonObject.GetStringField(fileName);
+                    DateTime builtTime = DateTime.Parse(builtTimeString, CultureInfo.InvariantCulture);
+
+                    if (!buildFileLastWrite.EqualsUpToSeconds(builtTime))
+                        needConfig = true;                    
+                }
+                else
+                {
+                    needConfig=true;
+                }
+                
+                builtJsonObject.AddOrSetFieldValue(fileName, buildFileLastWrite.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+        
+        //check if already built and CMakeList.txt not changed
+        DateTime cmakeLastWrite = File.GetLastWriteTime(projectCMakeLists);
+        if(builtJsonObject.ContainsField("CMakeLists.txt"))
+        {
+            string builtTimeString = builtJsonObject.GetStringField("CMakeLists.txt");
+            DateTime builtTime = DateTime.Parse(builtTimeString, CultureInfo.InvariantCulture);
+
+            if(!builtTime.EqualsUpToSeconds(cmakeLastWrite))
+                needConfig=true;
+        }
+        else
+        {
+            needConfig=true;
+        }
+        
+        builtJsonObject.AddOrSetFieldValue("CMakeLists.txt", cmakeLastWrite.ToString(CultureInfo.InvariantCulture));
+
+
+        if(needConfig)
         {
             Console.WriteLine("Target "+m_targetName+" CMakeLists.txt out of date, rebuilding");
 
@@ -348,6 +405,10 @@ public class CMakeTargetInst
                 return false;
             }
         }
+        else
+        {
+            Console.WriteLine("Target "+m_targetName+" CMakeLists.txt up to date, skipping configure");
+        }
 
         var buildCommand = CreateCMakeBuildCommand(m_buildPath, buildType);
         var buildCode = ExecuteCommandSync(buildCommand);
@@ -357,15 +418,12 @@ public class CMakeTargetInst
             Console.WriteLine("Cannot build project. Exited with code: "+buildCode);
             return false;
         }
-        else
+        
+        if(needConfig)
         {
-            if(configCMake)
-            {
-                DateTime cmakeLastWrite=File.GetLastWriteTime(projectCMakeLists);
-
-                File.WriteAllText(builtFile, cmakeLastWrite.ToString());
-            }
+            File.WriteAllText(builtFile, builtJsonObject.ToJsonString());
         }
+        
         return true;
     }
 
