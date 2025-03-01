@@ -8,6 +8,7 @@ using System.IO;
 using System.Diagnostics;
 using System.Text;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 public static class DateTimeExtensions
@@ -327,10 +328,16 @@ public class CMakeTargetInst
         if(File.Exists(builtFile))
         {
             DateTime cmakeLastWrite=File.GetLastWriteTime(projectCMakeLists);
-            string builtTimeString=System.IO.File.ReadAllText(builtFile);
-            DateTime builtTime=DateTime.Parse(builtTimeString);
+            string[] builtParts = System.IO.File.ReadAllText(builtFile).Split('|');
+            
+            bool paramsMatch = builtParts.Length == 4 
+                && builtParts[0] == m_targetName 
+                && builtParts[1] == m_targetLocation 
+                && builtParts[2] == m_cmakeArgs;
+                
+            DateTime builtTime = DateTime.Parse(builtParts[^1], CultureInfo.InvariantCulture);
 
-            if(builtTime.EqualsUpToSeconds(cmakeLastWrite))
+            if(paramsMatch && builtTime.EqualsUpToSeconds(cmakeLastWrite))
                 configCMake=false;
         }
 
@@ -363,7 +370,8 @@ public class CMakeTargetInst
             {
                 DateTime cmakeLastWrite=File.GetLastWriteTime(projectCMakeLists);
 
-                File.WriteAllText(builtFile, cmakeLastWrite.ToString());
+                string buildInfo = $"{m_targetName}|{m_targetLocation}|{m_cmakeArgs}|{cmakeLastWrite.ToString(CultureInfo.InvariantCulture)}";
+                File.WriteAllText(builtFile, buildInfo);
             }
         }
         return true;
