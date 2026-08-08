@@ -71,6 +71,11 @@ public class CMakeTargetInst
     private bool m_includedToolchain=false;
     private string m_includedToolchainPath;
 
+    // vcpkg manifest support
+    private string m_vcpkgManifestDir;
+    private string m_vcpkgTargetTriplet;
+    private string m_vcpkgInstalledDir;
+
     public CMakeTargetInst(string targetName, string targetLocation, string args)
     {
         m_targetName=targetName;
@@ -94,6 +99,30 @@ public class CMakeTargetInst
             m_includedToolchain=true;
             m_includedToolchainPath=toolChainMatch.Groups[1].Value;
             args=toolChainRegex.Replace(args, @"");
+        }
+
+        // Extract vcpkg manifest directory from args (if provided)
+        Regex vcpkgManifestRegex=new Regex(@"-DVCPKG_MANIFEST_DIR=([\\\/.\w]*)");
+        Match vcpkgManifestMatch=vcpkgManifestRegex.Match(args);
+
+        if(vcpkgManifestMatch.Success && (vcpkgManifestMatch.Groups.Count > 1))
+        {
+            m_vcpkgManifestDir=vcpkgManifestMatch.Groups[1].Value;
+            args=vcpkgManifestRegex.Replace(args, @"");
+        }
+
+        // Extract vcpkg target triplet from args (if provided)
+        Regex vcpkgTripletRegex=new Regex(@"-DVCPKG_TARGET_TRIPLET=([\\\/.\w-]*)");
+        Match vcpkgTripletMatch=vcpkgTripletRegex.Match(args);
+
+        if(vcpkgTripletMatch.Success && (vcpkgTripletMatch.Groups.Count > 1))
+        {
+            m_vcpkgTargetTriplet=vcpkgTripletMatch.Groups[1].Value;
+            args=vcpkgTripletRegex.Replace(args, @"");
+        }
+        else
+        {
+            m_vcpkgTargetTriplet="x64-linux";
         }
 
         m_cmakeArgs=args;
@@ -308,6 +337,13 @@ public class CMakeTargetInst
         {
             Console.WriteLine("Target "+m_targetName+" CMakeLists.txt out of date, rebuilding");
 
+            // Install vcpkg packages before cmake configure
+//            if(!InstallVcpkgPackages())
+//            {
+//                Console.WriteLine("vcpkg install failed for target: "+m_targetName);
+//                return false;
+//            }
+
             var configureCommand = CreateCMakeConfigCommand(target, rules, m_buildPath, buildType, useSystemCompiler);
             var configureCode = ExecuteCommandSync(configureCommand);
 
@@ -325,6 +361,16 @@ public class CMakeTargetInst
         if(buildCode!=0)
         {
             Console.WriteLine("Cannot build project. Exited with code: "+buildCode);
+            return false;
+        }
+
+        // Run cmake install to copy headers and libraries to the install prefix
+        var installCommand = CreateCMakeInstallCommand(m_buildPath, buildType);
+        var installCode = ExecuteCommandSync(installCommand);
+
+        if(installCode!=0)
+        {
+            Console.WriteLine("Cannot install project. Exited with code: "+installCode);
             return false;
         }
         else
@@ -358,9 +404,11 @@ public class CMakeTargetInst
             generatorName="Visual Studio 15 2017";
         break;
 #endif//!UE_5_0_OR_LATER
+#if !UE_5_5_OR_LATER
         case WindowsCompiler.VisualStudio2019:
             generatorName="Visual Studio 16 2019";
         break;
+#endif//!UE_5_5_OR_LATER
         case WindowsCompiler.VisualStudio2022:
             generatorName="Visual Studio 17 2022";
         break;
@@ -377,7 +425,10 @@ public class CMakeTargetInst
     {
         string generatorOptions="";
 
-        if((compiler == WindowsCompiler.VisualStudio2022) || (compiler == WindowsCompiler.VisualStudio2019)
+        if((compiler == WindowsCompiler.VisualStudio2022)
+#if !UE_5_5_OR_LATER
+            || (compiler == WindowsCompiler.VisualStudio2019)
+#endif//!UE_5_5_OR_LATER
 #if !UE_5_0_OR_LATER
             || (compiler == WindowsCompiler.VisualStudio2017)
 #endif//!UE_5_0_OR_LATER 
@@ -635,6 +686,7 @@ public class CMakeTargetInst
 
                 if(!string.IsNullOrEmpty(internalSDKPath))
                 {
+                    internalSDKPath=NormalizeSdkPathForCurrentEngine(internalSDKPath, rules);
                     cCompilerPath=Path.Combine(internalSDKPath, "bin", "clang");
                     cppCompilerPath=Path.Combine(internalSDKPath, "bin", "clang++");
                     linkerPath=Path.Combine(internalSDKPath, "bin", "lld");
@@ -650,6 +702,36 @@ public class CMakeTargetInst
         }
 
         return new GeneratorInfo(name, options, cCompilerPath, cppCompilerPath, linkerPath);
+    }
+
+    private string NormalizeSdkPathForCurrentEngine(string internalSdkPath, ModuleRules rules)
+    {
+        if(String.IsNullOrEmpty(internalSdkPath) || Directory.Exists(internalSdkPath))
+        {
+            return internalSdkPath;
+        }
+
+        string engineDirectory = rules.EngineDirectory.Replace('\\', '/');
+        string normalizedSdkPath = internalSdkPath.Replace('\\', '/');
+        const string engineMarker = "/Engine/";
+        int markerIndex = normalizedSdkPath.IndexOf(engineMarker, StringComparison.OrdinalIgnoreCase);
+        if(markerIndex < 0)
+        {
+            return internalSdkPath;
+        }
+
+        string remappedSdkPath = Path.Combine(
+            engineDirectory,
+            normalizedSdkPath.Substring(markerIndex + engineMarker.Length))
+            .Replace('\\', '/');
+
+        if(Directory.Exists(remappedSdkPath))
+        {
+            Console.WriteLine("UE4CMake remapped SDK path from '"+internalSdkPath+"' to '"+remappedSdkPath+"'");
+            return remappedSdkPath;
+        }
+
+        return internalSdkPath;
     }
 
     private string GetCMakeExe()
@@ -703,6 +785,43 @@ public class CMakeTargetInst
 
         var installPath = m_thirdPartyGeneratedPath;
 
+        // vcpkg manifest mode integration:
+        // When VCPKG_MANIFEST_DIR is provided and VCPKG_ROOT is available,
+        // use vcpkg's toolchain as the primary CMAKE_TOOLCHAIN_FILE and
+        // chainload the UE-generated toolchain via VCPKG_CHAINLOAD_TOOLCHAIN_FILE.
+        // This lets vcpkg automatically install packages from vcpkg.json during
+        // cmake configure, while still using the UE compiler/sysroot.
+        string vcpkgOptions = "";
+        if(!String.IsNullOrEmpty(m_vcpkgManifestDir))
+        {
+            string vcpkgRoot = Environment.GetEnvironmentVariable("VCPKG_ROOT");
+            if(!String.IsNullOrEmpty(vcpkgRoot))
+            {
+                string vcpkgToolchain = Path.Combine(vcpkgRoot, "scripts", "buildsystems", "vcpkg.cmake");
+                if(File.Exists(vcpkgToolchain))
+                {
+                    // Chainload the UE toolchain from vcpkg's toolchain
+                    vcpkgOptions += " -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=\""+toolchainPath+"\"";
+                    // Override CMAKE_TOOLCHAIN_FILE to point to vcpkg.cmake
+                    toolChain = " -DCMAKE_TOOLCHAIN_FILE=\""+vcpkgToolchain+"\"";
+
+                    Console.WriteLine("vcpkg manifest mode: using "+vcpkgToolchain);
+                    Console.WriteLine("  chainloading UE toolchain: "+toolchainPath);
+                }
+                else
+                {
+                    Console.WriteLine("Warning: vcpkg.cmake not found at "+vcpkgToolchain);
+                }
+            }
+            else
+            {
+                Console.WriteLine("Warning: VCPKG_ROOT not set, vcpkg manifest mode unavailable");
+            }
+
+            vcpkgOptions += " -DVCPKG_MANIFEST_DIR=\""+Path.GetFullPath(m_vcpkgManifestDir)+"\"";
+            vcpkgOptions += " -DVCPKG_TARGET_TRIPLET="+m_vcpkgTargetTriplet;
+        }
+
         var arguments = " -G \""+generatorInfo.m_name+"\""+
                         " "+generatorInfo.m_options+" "+
                         " -S \""+m_generatedTargetPath+"\""+
@@ -711,11 +830,63 @@ public class CMakeTargetInst
                         " -DCMAKE_INSTALL_PREFIX=\""+installPath+"\""+
                         toolChain+
                         options+
+                        vcpkgOptions+
                         " "+m_cmakeArgs;
 
         Console.WriteLine("CMakeTarget calling cmake with: "+arguments);
 
         return program+arguments;
+    }
+
+    /// <summary>
+    /// Run vcpkg install to ensure packages from vcpkg.json are available.
+    /// Called before cmake configure when VCPKG_MANIFEST_DIR is set.
+    /// Sets m_vcpkgInstalledDir to the install root on success.
+    /// </summary>
+    private bool InstallVcpkgPackages()
+    {
+        if(String.IsNullOrEmpty(m_vcpkgManifestDir))
+            return true; // nothing to do
+
+        string vcpkgRoot = Environment.GetEnvironmentVariable("VCPKG_ROOT");
+        if(String.IsNullOrEmpty(vcpkgRoot))
+        {
+            Console.WriteLine("VCPKG_ROOT not set, skipping vcpkg install");
+            return true;
+        }
+
+        string vcpkgExe = Path.Combine(vcpkgRoot, "vcpkg");
+        string manifestDir = Path.GetFullPath(m_vcpkgManifestDir);
+        string installRoot = Path.Combine(m_buildPath, "vcpkg_installed");
+
+        // Verify the manifest directory exists and contains vcpkg.json
+        string vcpkgJsonPath = Path.Combine(manifestDir, "vcpkg.json");
+        if(!File.Exists(vcpkgJsonPath))
+        {
+            Console.WriteLine("vcpkg.json not found at "+vcpkgJsonPath+", skipping vcpkg install");
+            return true;
+        }
+
+        Console.WriteLine("Running vcpkg install from manifest: "+manifestDir);
+        Console.WriteLine("  triplet: "+m_vcpkgTargetTriplet);
+        Console.WriteLine("  install root: "+installRoot);
+
+        string command = vcpkgExe+" install"+
+                         " --triplet "+m_vcpkgTargetTriplet+
+                         " --x-manifest-root="+manifestDir+
+                         " --x-install-root="+installRoot;
+
+        int exitCode = ExecuteCommandSync(command);
+
+        if(exitCode != 0)
+        {
+            Console.WriteLine("vcpkg install failed with exit code: "+exitCode);
+            return false;
+        }
+
+        m_vcpkgInstalledDir = Path.Combine(installRoot, m_vcpkgTargetTriplet);
+        Console.WriteLine("vcpkg packages installed to: "+m_vcpkgInstalledDir);
+        return true;
     }
 
     private void addIncludedToolchain(ref string contents)

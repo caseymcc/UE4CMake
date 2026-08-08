@@ -1,13 +1,33 @@
 cmake_minimum_required(VERSION 3.10)
 
-#using undocumented cmake functionality to force global on imported targets
-function(add_library)
-    set(_args ${ARGN})
-    if ("${_args}" MATCHES ";IMPORTED")
-        list(APPEND _args GLOBAL)
+cmake_policy(SET CMP0091 NEW)
+
+# Call project() early so toolchain files (e.g. vcpkg.cmake) are loaded before
+# we override add_library. This prevents infinite recursion when both vcpkg and
+# our wrapper override add_library using CMake's _add_library mechanism.
+project(@BUILD_TARGET_NAME@_wrapper LANGUAGES C CXX)
+
+# Force imported targets to be GLOBAL so they are visible across add_subdirectory.
+# When vcpkg is used as the toolchain, it also overrides add_library via the same
+# _add_library mechanism, and both overrides conflict causing infinite recursion.
+# In that case, skip the override—vcpkg already handles imported targets properly
+# and we use CMAKE_FIND_PACKAGE_TARGETS_GLOBAL when available.
+if(VCPKG_TOOLCHAIN)
+    # vcpkg toolchain is active; do not override add_library to avoid recursion.
+    # On CMake 3.24+ we can make all find_package targets globally visible.
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
+        set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL TRUE)
     endif()
-    _add_library(${_args})
-endfunction()
+else()
+    # No vcpkg toolchain, safe to override add_library to force GLOBAL on imports.
+    function(add_library)
+        set(_args ${ARGN})
+        if ("${_args}" MATCHES ";IMPORTED")
+            list(APPEND _args GLOBAL)
+        endif()
+        _add_library(${_args})
+    endfunction()
+endif()
 
 function(_ue4_get_target_link_libraries addTarget target_file_list target_linker_file_list target_directories)
     foreach(target ${ARGN})
@@ -96,8 +116,6 @@ macro(target_build_info build_info target)
     list(APPEND ${build_info} "libraries=$<JOIN:$<REMOVE_DUPLICATES:${target_link_lib_files}>,$<COMMA>>")
 endmacro()
 
-cmake_policy(SET CMP0091 NEW)
-
 set(@BUILD_TARGET_NAME@_build_info "")
 
 #if(@FORCE_RELEASE_RUNTIME@)
@@ -108,7 +126,8 @@ set(@BUILD_TARGET_NAME@_build_info "")
 add_subdirectory("@BUILD_TARGET_DIR@" "@BUILD_TARGET_NAME@")
 target_build_info("@BUILD_TARGET_NAME@_build_info" @BUILD_TARGET_NAME@)
 
-project(@BUILD_TARGET_NAME@_build)
+# NOTE: project() was moved to the top of this file so that toolchain files
+# (e.g. vcpkg.cmake) are loaded before the add_library override.
 
 string(REPLACE ";" "\n" @BUILD_TARGET_NAME@_build_info "${@BUILD_TARGET_NAME@_build_info}")
 
